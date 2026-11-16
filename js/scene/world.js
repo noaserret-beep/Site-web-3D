@@ -1,8 +1,15 @@
 // La Maison Mellow en 3D : une maison de poupée que l'on visite pièce par pièce
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as M from './models.js';
 import * as T from './textures.js';
+import { pbr, modele, manager } from './realisme.js';
 import { ETAPES, VUES, DERNIERE } from './parcours.js';
 
 const { box, mats } = M;
@@ -21,6 +28,11 @@ const SLOPE = (PEAK - LEVEL[2]) / 13.5;
 const ALPHA = Math.atan(SLOPE);
 
 const UP = new THREE.Vector3(0, 1, 0);
+// lampe allumée la plus proche, pour chaque étape de la visite
+const LAMPES = [
+  [0.8, 2.6, 5.5], [0.8, 2.6, 5.0], [0.4, 3.3, -0.2], [0.4, 3.3, -0.2], [12.75, 1.9, -1.5], [17.9, 3.3, 1.3], [19, 4.5, -2],
+  [18.05, 7.3, -0.75], [18.05, 7.3, -0.75], [9.75, 7.9, -2.5], [7, 8.6, -1], [13.0, 12.5, -1.55], [9, 14.2, -0.8], [9, 8, 6],
+].map((p) => new THREE.Vector3(...p));
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const smooth = (a, b, x) => {
@@ -44,22 +56,43 @@ export class World {
     this.ray = new THREE.Raycaster();
     this.flickers = [];
     this.steams = [];
+    this.loading = [];
     this.paused = false;
     this.intro = reducedMotion ? 0 : 1;
 
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !lite, powerPreference: 'high-performance' }));
     r.setPixelRatio(Math.min(window.devicePixelRatio || 1, lite ? 1.4 : 1.75));
     r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.0;
+    r.toneMappingExposure = 1.08;
     r.shadowMap.enabled = !lite;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 260);
 
+    // reflets et lumière d'ambiance : une vraie pièce éclairée par un feu de cheminée (HDRI)
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.32;
+    this.scene.environmentIntensity = 0.35;
+    new HDRLoader(manager).load('assets/textures/fireplace_1k.hdr', (hdr) => {
+      hdr.mapping = THREE.EquirectangularReflectionMapping;
+      this.scene.environment = pmrem.fromEquirectangular(hdr).texture;
+      this.scene.environmentIntensity = 0.55;
+      hdr.dispose();
+    });
+
+    // rendu "photo" : ombres de contact (GTAO) et halo des lampes
+    if (!lite) {
+      const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+      this.composer = new EffectComposer(r, rt);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.gtao = new GTAOPass(this.scene, this.camera, 512, 512, undefined, { radius: 0.7, thickness: 1.5, distanceFallOff: 1, scale: 1.1, samples: 16 });
+      this.gtao.blendIntensity = 0.9;
+      this.composer.addPass(this.gtao);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.32, 0.55, 0.9);
+      this.composer.addPass(this.bloom);
+      this.composer.addPass(new OutputPass());
+    }
 
     this._backdrop();
     this._lights();
@@ -71,6 +104,8 @@ export class World {
     this._path();
     this._particles();
     this._buildParcours();
+    // les meubles se chargent en arrière-plan ; on attend au plus 20 s
+    this.ready = Promise.race([Promise.all(this.loading), new Promise((r) => setTimeout(r, 20000))]);
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -103,17 +138,19 @@ export class World {
     const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
     q.frustumCulled = false;
     q.renderOrder = -1000;
+    q.userData.noAO = true;
     this.backdrop = q;
     this.scene.add(q);
-    this.skyCold = { top: new THREE.Color('#e6cfc2'), bottom: new THREE.Color('#f8efe4') };
-    this.skyWarm = { top: new THREE.Color('#efc39d'), bottom: new THREE.Color('#fae8d3') };
+    // ciel d'un soir d'hiver : bleu nuit en haut, lueur chaude à l'horizon
+    this.skyCold = { top: new THREE.Color('#26314d'), bottom: new THREE.Color('#c99c8c') };
+    this.skyWarm = { top: new THREE.Color('#2b2f4f'), bottom: new THREE.Color('#e3a77e') };
   }
 
   _lights() {
     const s = this.scene;
-    this.hemi = new THREE.HemisphereLight('#fff1df', '#a07650', 1.25);
+    this.hemi = new THREE.HemisphereLight('#fff1df', '#8a6446', 0.6);
     s.add(this.hemi);
-    const key = (this.key = new THREE.DirectionalLight('#ffe2c0', 2.1));
+    const key = (this.key = new THREE.DirectionalLight('#ffe2c0', 1.25));
     key.position.set(-6, 16, 30);
     key.target.position.set(9, 6, 0);
     key.castShadow = true;
@@ -124,10 +161,16 @@ export class World {
     const sc = key.shadow.camera;
     sc.left = -22; sc.right = 22; sc.top = 16; sc.bottom = -14; sc.near = 5; sc.far = 80;
     s.add(key, key.target);
-    const fill = new THREE.DirectionalLight('#ffd6b0', 0.6);
-    fill.position.set(30, 10, 12);
+    const fill = new THREE.DirectionalLight('#c9d4ff', 0.25);
+    fill.position.set(30, 10, -12);
     s.add(fill);
-    this.roomLight = new THREE.PointLight('#ffb36b', 22, 14, 1.6);
+    // feu de cheminée et lampe la plus proche
+    this.fireLight = new THREE.PointLight('#ff8a3a', 9, 9, 1.8);
+    this.fireLight.position.set(10.2, 1.0, -2.3);
+    s.add(this.fireLight);
+    this.lampLight = new THREE.PointLight('#ffcb92', 8, 8, 1.8);
+    s.add(this.lampLight);
+    this.roomLight = new THREE.PointLight('#ffcf9e', 10, 14, 1.6);
     this.roomLight.position.set(0.8, 2.8, 6);
     s.add(this.roomLight);
     this.cursorLight = new THREE.PointLight('#ffc98f', 0, 7, 2);
@@ -138,10 +181,10 @@ export class World {
   _house() {
     const H = (this.house = new THREE.Group());
     this.scene.add(H);
-    const slab = mats.matte('#efe3d3', 0.9);
+    const slab = pbr('white_plaster_02', { color: '#f4eee7', diffuse: false, repeat: [4, 2] });
     const trim = mats.wood('#7a5638');
-    const plasterIn = new THREE.MeshStandardMaterial({ map: T.plaster('#f3e8d8'), roughness: 0.95 });
-    const plasterOut = new THREE.MeshStandardMaterial({ map: T.plaster('#f1e4d1'), roughness: 0.95 });
+    const plasterIn = pbr('painted_plaster_wall', { color: '#f2e9dd', diffuse: false, repeat: [1.2, 1.6], normal: 0.8 });
+    const plasterOut = pbr('white_plaster_02', { color: '#efe4d6', repeat: [2, 3] });
 
     // Fondations
     H.add(box(28.6, 0.6, 8.4, 0.1, mats.matte('#d6c2a8', 0.95), 9, -0.3, -0.1));
@@ -162,42 +205,45 @@ export class World {
     [5.2, 10.6].forEach((y) => H.add(box(27.2, 0.42, 0.12, 0.03, trim, 9, y, FRONT + 0.04)));
 
     // Sols
-    const floor = (x0, x1, z0, z1, y, tex) => {
+    const floor = (x0, x1, z0, z1, y, mat) => {
       const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
       const uv = geo.attributes.uv;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * ((x1 - x0) / 9), uv.getY(i) * ((z1 - z0) / 9));
-      const m = M.mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }), { cast: false });
+      const m = M.mesh(geo, mat, { cast: false });
       m.rotation.x = -Math.PI / 2;
       m.position.set((x0 + x1) / 2, y + 0.006, (z0 + z1) / 2);
       H.add(m);
     };
-    const oak = T.planks('#caa47b');
-    const oakDark = T.planks('#b88d63', 'planks2');
+    // vrais sols : parquet, carrelage, marbre, vieux plancher
+    const oak = pbr('wood_floor', { repeat: [2.4, 2.4] });
+    const parquet = pbr('herringbone_parquet', { repeat: [3, 3] });
+    const planks = pbr('plank_flooring_02', { repeat: [2.2, 2.2] });
+    const attic = pbr('old_wood_floor', { repeat: [2.2, 2.2] });
     floor(LEFT, 4.5, BACK, FRONT, 0, oak);
-    floor(4.5, 13.5, BACK, FRONT, 0, oakDark);
-    floor(13.5, RIGHT, BACK, FRONT, 0, T.tiles('#f1e6d6', '#d29a72'));
-    floor(LEFT, 4.5, BACK, FRONT, LEVEL[1], T.tiles('#f4ede3', '#c9d3cf'));
-    floor(4.5, 13.5, BACK, FRONT, LEVEL[1], oak);
-    floor(13.5, 17.7, BACK, FRONT, LEVEL[1], oakDark);
-    floor(17.7, RIGHT, -1.25, FRONT, LEVEL[1], oakDark);
-    floor(LEFT, 4.6, BACK, FRONT, LEVEL[2], oak);
-    floor(6.8, RIGHT, BACK, FRONT, LEVEL[2], oak);
-    floor(4.6, 6.8, -0.9, FRONT, LEVEL[2], oak);
+    floor(4.5, 13.5, BACK, FRONT, 0, parquet);
+    floor(13.5, RIGHT, BACK, FRONT, 0, pbr('floor_tiles_06', { repeat: [4.5, 4.5] }));
+    floor(LEFT, 4.5, BACK, FRONT, LEVEL[1], pbr('marble_tiles', { repeat: [3, 3] }));
+    floor(4.5, 13.5, BACK, FRONT, LEVEL[1], planks);
+    floor(13.5, 17.7, BACK, FRONT, LEVEL[1], planks);
+    floor(17.7, RIGHT, -1.25, FRONT, LEVEL[1], planks);
+    floor(LEFT, 4.6, BACK, FRONT, LEVEL[2], attic);
+    floor(6.8, RIGHT, BACK, FRONT, LEVEL[2], attic);
+    floor(4.6, 6.8, -0.9, FRONT, LEVEL[2], attic);
     // garde-corps autour de la trappe du grenier
     this.house.add(box(2.3, 0.07, 0.07, 0.02, mats.wood('#8a5a36'), 5.7, LEVEL[2] + 1.0, -0.85));
     [4.65, 5.7, 6.75].forEach((x) => this.house.add(box(0.05, 1.0, 0.05, 0.01, mats.wood('#8a5a36'), x, LEVEL[2] + 0.5, -0.85)));
 
-    // Murs du fond (papier peint différent par pièce)
+    // Murs du fond : enduit peint, une teinte douce par pièce
     const papers = [
-      [0, 0, T.wallpaper('#ecdcc6', 'rgba(122,86,56,0.10)', 'dots')],
-      [1, 0, T.wallpaper('#ebcaa8', 'rgba(255,248,236,0.35)', 'stripes')],
-      [2, 0, T.wallpaper('#dfe2cd', 'rgba(110,125,95,0.16)', 'leaves')],
-      [0, 1, T.wallpaper('#dbe4e1', 'rgba(255,255,255,0.4)', 'arches')],
-      [1, 1, T.wallpaper('#e8d1ba', 'rgba(122,86,56,0.10)', 'arches')],
-      [2, 1, T.wallpaper('#f0d6cc', 'rgba(191,107,71,0.13)', 'dots')],
+      [0, 0, '#efe2d0'],
+      [1, 0, '#ead3bb'],
+      [2, 0, '#e3e5d4'],
+      [0, 1, '#e2e9e6'],
+      [1, 1, '#ecdcc8'],
+      [2, 1, '#f1ddd3'],
     ];
-    papers.forEach(([c, l, tex]) => {
-      const m = M.mesh(new THREE.BoxGeometry(9, 5.4, 0.3), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
+    papers.forEach(([c, l, teinte]) => {
+      const m = M.mesh(new THREE.BoxGeometry(9, 5.4, 0.3), pbr('painted_plaster_wall', { color: teinte, diffuse: false, repeat: [3, 1.8], normal: 0.8 }));
       m.position.set(COLS[c], LEVEL[l] + 2.7, BACK - 0.15);
       H.add(m);
       // plinthe
@@ -229,8 +275,7 @@ export class World {
     hole.absarc(9, 13.9, 1.05, 0, Math.PI * 2, true);
     gable.holes.push(hole);
     const gGeo = new THREE.ExtrudeGeometry(gable, { depth: 0.3, bevelEnabled: false });
-    const gMesh = M.mesh(gGeo, new THREE.MeshStandardMaterial({ map: T.planks('#d9b58c', 'planks3'), roughness: 0.85 }));
-    gMesh.material.map.repeat.set(0.25, 0.25);
+    const gMesh = M.mesh(gGeo, pbr('plank_flooring_02', { repeat: [0.28, 0.28], color: '#f0dcc2', rotation: Math.PI / 2 }));
     gMesh.position.z = BACK - 0.3;
     H.add(gMesh);
     const rw = M.mesh(new THREE.CircleGeometry(1.05, 40), new THREE.MeshBasicMaterial({ map: T.windowView() }), { cast: false });
@@ -244,9 +289,10 @@ export class World {
   }
 
   _roof() {
-    const roofMat = new THREE.MeshStandardMaterial({ map: T.shingles('#6b4528'), roughness: 0.85 });
-    const under = mats.wood('#b98557');
     const over = 1.5;
+    const len0 = (13.5 + over) / Math.cos(ALPHA);
+    const roofMat = pbr('clay_roof_tiles', { repeat: [len0 / 2.6, 9.4 / 2.6], color: '#d9b3a0' });
+    const under = pbr('plank_flooring_02', { repeat: [len0 / 4, 2], color: '#e2c4a0' });
     const hx = 13.5 + over;
     const len = hx / Math.cos(ALPHA);
     [-1, 1].forEach((side) => {
@@ -268,7 +314,7 @@ export class World {
     this.house.add(ridge);
     // cheminée
     const ch = new THREE.Group();
-    ch.add(box(1.2, 3.4, 1.2, 0.06, mats.matte('#c98b62', 0.9), 0, 1.7, 0));
+    ch.add(box(1.2, 3.4, 1.2, 0.02, pbr('brick_wall_001', { repeat: [0.8, 2] }), 0, 1.7, 0));
     ch.add(box(1.5, 0.3, 1.5, 0.06, mats.matte('#7a5638', 0.9), 0, 3.45, 0));
     ch.add(box(1.25, 0.3, 1.25, 0.12, mats.matte('#fbf6ef', 0.9), 0, 3.66, 0));
     ch.position.set(15.6, 13.4, -1.6);
@@ -277,11 +323,11 @@ export class World {
   }
 
   _facade() {
-    const plaster = new THREE.MeshStandardMaterial({ map: T.plaster('#f3e5d1'), roughness: 0.95, transparent: true });
-    const trimM = new THREE.MeshStandardMaterial({ color: '#7a5638', roughness: 0.6, transparent: true });
+    const plaster = pbr('white_plaster_02', { color: '#f4ead9', diffuse: false, repeat: [0.16, 0.16], normal: 1.2, transparent: true });
+    const trimM = pbr('fine_grained_wood', { color: '#a77a58', repeat: [1, 1], transparent: true });
     const frameM = new THREE.MeshStandardMaterial({ color: '#fbf4ea', roughness: 0.6, transparent: true });
     const paneM = new THREE.MeshBasicMaterial({ map: T.warmWindow(), transparent: true });
-    const doorM = new THREE.MeshStandardMaterial({ color: '#9b5f3c', roughness: 0.6, transparent: true });
+    const doorM = pbr('fine_grained_wood', { color: '#c97c52', repeat: [0.6, 0.6], transparent: true });
     const greenM = new THREE.MeshStandardMaterial({ color: '#7f8f6d', roughness: 0.8, transparent: true });
     this.facadeMats = [plaster, trimM, frameM, paneM, doorM, greenM];
 
@@ -434,42 +480,35 @@ export class World {
   _exterior() {
     const g = (this.exterior = new THREE.Group());
     this.scene.add(g);
-    const ground = M.mesh(new THREE.CylinderGeometry(1, 1, 0.8, 72), mats.matte('#f8efe3', 0.95), { cast: false });
+    // jardin sous la neige
+    const snow = pbr('snow_02', { repeat: [9, 9], color: '#fbf8f4' });
+    const ground = M.mesh(new THREE.CylinderGeometry(1, 1, 0.8, 72), snow, { cast: false });
     ground.scale.set(34, 1, 22);
     ground.position.set(9, -1.0, 2);
     g.add(ground);
-    // bordure moelleuse
-    const rim = M.mesh(new THREE.TorusGeometry(1, 0.012, 8, 96), mats.matte('#ead9c3', 0.95), { cast: false });
-    rim.rotation.x = Math.PI / 2;
-    rim.scale.set(34, 22, 22);
-    rim.position.set(9, -0.6, 2);
-    g.add(rim);
-    // allée
+    // allée en pierres
+    const stone = pbr('marble_01', { repeat: [0.6, 0.6], color: '#cdbfae' });
     for (let i = 0; i < 7; i++) {
-      const st = M.mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.12, 20), mats.matte('#dccbb5', 0.95));
-      st.position.set(0.8 + Math.sin(i * 1.3) * 0.25, -0.56, 4.8 + i * 1.35);
+      const st = M.mesh(new THREE.CylinderGeometry(0.55, 0.6, 0.1, 20), stone);
+      st.position.set(0.8 + Math.sin(i * 1.3) * 0.25, -0.57, 4.8 + i * 1.35);
       st.scale.z = 0.75;
       g.add(st);
     }
-    const trees = [[-9, -1], [-12, 4], [-8.5, 9], [27.5, -0.5], [30.5, 5], [26.5, 10], [-14, -6], [32, -5], [6, -9], [14, -9.5]];
-    trees.forEach(([x, z], i) => {
-      const t = M.fir(2.6 + (i % 3) * 0.9, i % 2 ? '#7f8f6d' : '#8d9a7a');
-      t.position.set(x, -0.6, z);
-      g.add(t);
-    });
+    // sapins
+    const trees = [[-9, -1, 6.5], [-12, 4, 5], [-8.5, 9, 4], [27.5, -0.5, 7], [30.5, 5, 5], [26.5, 10, 4.2], [-14, -6, 7.5], [32, -5, 6.5], [6, -9, 8], [14, -9.5, 7]];
+    trees.forEach(([x, z, h], i) => this._place('fir_sapling_medium', x, -0.6, z, { hauteur: h, ry: i * 1.7 }));
+    // lanternes le long de l'allée
     [[-1.4, 6.2], [3.0, 8.4], [-1.2, 11.2], [3.2, 13]].forEach(([x, z]) => {
-      const l = M.lantern();
-      l.position.set(x, -0.6, z);
-      g.add(l);
+      this._place('wooden_lantern_01', x, -0.6, z, { hauteur: 1.1 });
+      const gl = M.glowSprite('#ffc370', 1.6, 0.5);
+      gl.position.set(x, -0.05, z);
+      g.add(gl);
     });
-    // buissons enneigés
+    // congères
     [[-6.2, 4.4], [-7.4, 2.2], [24.4, 4.6], [25.6, 2.0], [-2.6, 9.5], [4.6, 11.5]].forEach(([x, z], i) => {
-      const b = M.mesh(new THREE.SphereGeometry(0.8 + (i % 2) * 0.25, 16, 12), mats.matte(i % 2 ? '#8d9a7a' : '#7f8f6d', 0.85));
-      b.scale.y = 0.75;
-      b.position.set(x, -0.25, z);
-      g.add(b);
-      const sn = M.mesh(new THREE.SphereGeometry(0.62 + (i % 2) * 0.2, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2.4), mats.matte('#fbf6ef', 0.9));
-      sn.position.set(x, 0.05, z);
+      const sn = M.mesh(new THREE.SphereGeometry(0.9 + (i % 2) * 0.3, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2.6), snow);
+      sn.scale.y = 0.6;
+      sn.position.set(x, -0.62, z);
       g.add(sn);
     });
   }
@@ -522,6 +561,43 @@ export class World {
     return st;
   }
 
+  // Pose un vrai meuble / objet (modèle 3D) dans la maison. Les modèles sont en mètres : 1 m = 2 unités.
+  _place(name, x, y, z, { ry = 0, s = 2, ligne = null, productId = null, hauteur = 0, after = null } = {}) {
+    const p = modele(name).then((obj) => {
+      if (!obj) return null;
+      obj.rotation.y = ry;
+      if (hauteur) {
+        const h = new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3()).y;
+        s = hauteur / h;
+      }
+      obj.scale.setScalar(s);
+      obj.position.set(x, y, z);
+      if (hauteur) {
+        // certains modèles ne sont pas centrés : on les recale sur leur base
+        obj.updateMatrixWorld(true);
+        const bb = new THREE.Box3().setFromObject(obj);
+        obj.position.x += x - (bb.min.x + bb.max.x) / 2;
+        obj.position.z += z - (bb.min.z + bb.max.z) / 2;
+        obj.position.y += y - bb.min.y;
+      }
+      this.scene.add(obj);
+      if (ligne) this._toy(obj, ligne, productId);
+      if (after) after(obj);
+      return obj;
+    });
+    this.loading.push(p);
+    return p;
+  }
+
+  // Fenêtre donnant sur la nuit enneigée, avec rideaux en lin
+  _window(x, y, z, w = 1.6, h = 2.0, ry = 0) {
+    const win = M.windowFrame(w, h);
+    win.position.set(x, y, z);
+    win.rotation.y = ry;
+    this.scene.add(win);
+    return win;
+  }
+
   _rooms() {
     const S = this.scene;
     const add = (o, x, y, z, ry = 0, s = 1) => {
@@ -531,124 +607,158 @@ export class World {
       S.add(o);
       return o;
     };
+    const P = (...a) => this._place(...a);
     const G = LEVEL[0];
     const F1 = LEVEL[1];
     const F2 = LEVEL[2];
+    const plante = 'Une plante qui pousse au chaud, comme tout le monde ici.';
 
-    /* ENTRÉE */
-    this._toy(add(M.coatRack(), -1.6, G, BACK), 'Laissez votre manteau ici, on vous prête des chaussons tout chauds.', 'chaussons-nuage');
-    add(M.bench('#a3ad8f'), -1.6, G, -2.7);
-    add(M.doormat('Bienvenue'), 0.8, G, 2.5);
-    this._toy(add(M.plant(1.1), 3.4, G, -2.6), 'Même les plantes aiment la chaleur douce de la maison.');
-    add(M.rug(2.4, 4.2, ['#e6c9a8', '#c48a5a', '#f4e8d8']), 0.8, G, 0.6);
-    const sign1 = M.mesh(new THREE.PlaneGeometry(1.7, 0.53), new THREE.MeshStandardMaterial({ map: T.signTexture('Salon'), roughness: 0.8 }));
-    sign1.position.set(3.4, 3.9, 0.6);
+    /* ENTRÉE : on enlève ses bottes, on enfile ses chaussons */
+    add(M.coatRack(), -1.8, G + 0.7, BACK);
+    P('painted_wooden_bench', -1.8, G, -3.0, { ligne: 'Un banc pour enlever ses bottes… et enfiler des chaussons tout chauds.', productId: 'chaussons-nuage' });
+    this._prop('chaussons', '#c48a5a', 'chaussons-nuage', VUES.entree, -1.5, G + 0.02, -1.95, { ry: 0.35, scale: 0.62, hotspotY: 0.6 });
+    P('rubber_boots', 0.4, G, -2.95, { ry: -0.25, ligne: 'Les bottes restent à l\'entrée : ici, on vit en chaussons.', productId: 'chaussons-nuage' });
+    P('ornate_mirror_01', 2.1, G + 3.3, BACK + 0.02, { ligne: 'Petit coup d\'œil dans le miroir avant de s\'installer.' });
+    P('potted_plant_02', 3.6, G, -2.7, { s: 1.9, ligne: plante });
+    P('wall_clock', -4.48, G + 3.7, -0.6, { ry: Math.PI / 2, ligne: 'Il est l\'heure… de se mettre au chaud.' });
+    P('wicker_basket_01', -3.7, G, -1.2, { ry: 0.5, s: 2.2 });
+    add(M.doormat('Bienvenue'), 0.8, G, 2.55);
+    add(M.rug(2.6, 4.0, ['#e6c9a8', '#c48a5a', '#f4e8d8']), 0.6, G, 0.2);
+    P('hanging_industrial_lamp', 0.4, 5.0, -0.2, { s: 1.15 });
+    this._bulb(0.4, 3.55, -0.2);
+    const sign1 = M.mesh(new THREE.PlaneGeometry(1.5, 0.47), new THREE.MeshStandardMaterial({ map: T.signTexture('Salon'), roughness: 0.8 }));
+    sign1.position.set(3.6, 3.9, 0.6);
     S.add(sign1);
-    S.add(box(0.04, 0.9, 0.04, 0.01, mats.matte('#5a3a1e'), 3.4, 4.6, 0.6));
-    add(M.frame(1, 1.0, 1.25), 1.6, G + 3.0, BACK + 0.05);
-    this._prop('chaussons', '#c48a5a', 'chaussons-nuage', VUES.entree, -1.6, G + 1.0, -2.6, { ry: 0.2, scale: 0.75, hotspotY: 0.9 });
-    const ceilLamp1 = M.pendant('#c48a5a');
-    add(ceilLamp1, 0.4, G + 3.4, 0.2);
+    S.add(box(0.03, 0.9, 0.03, 0.01, mats.matte('#5a3a1e'), 3.6, 4.6, 0.6));
 
-    /* SALON */
+    /* SALON : le coin du feu */
     const fp = add(M.fireplace(), 10.2, G, BACK + 0.35);
-    this._toy(fp, 'Rien ne vaut un feu qui crépite… à part des pieds bien au chaud.', 'chaussons-nuage');
     this.flickers.push({ fire: fp.userData.flames, glow: fp.userData.glow });
-    fp.traverse((o) => o.userData.flicker && this.flickers.push({ glow: o.userData.flicker }));
-    add(M.rug(5.2, 3.6), 9.6, G, 0.7);
-    this._toy(add(M.armchair('#c48a5a'), 6.6, G, -0.2, 0.55), 'Le fauteuil préféré de la maison. Avec un plaid, il est imbattable.', 'chaussons-nuage');
+    this._toy(fp, 'Rien ne vaut un feu qui crépite… à part des pieds bien au chaud.', 'chaussons-nuage');
+    P('mantel_clock_01', 11.0, G + 2.74, BACK + 0.45, { ligne: 'Tic-tac… c\'est l\'heure de se mettre au chaud.' });
+    P('brass_candleholders', 9.35, G + 2.74, BACK + 0.45, { s: 1.15 });
+    P('hanging_picture_frame_02', 10.2, G + 4.05, BACK + 0.02, { s: 2.2 });
+    this._window(6.6, G + 2.9, BACK + 0.02, 1.5, 2.1);
+    P('sofa_02', 6.0, G, -0.5, { ry: Math.PI / 2, ligne: 'Le canapé où l\'on se pelotonne sous le plaid, les pieds au chaud.', productId: 'chaussons-nuage' });
+    P('throw_pillows_01', 5.62, G + 0.86, -0.5, { ry: Math.PI / 2 });
     const pl = M.plaid('#e6b9ad');
-    pl.position.set(6.0, 1.45, -0.55);
-    pl.rotation.set(-0.3, 0.55, 0.15);
+    pl.position.set(6.25, 1.2, 1.05);
+    pl.rotation.set(-1.3, 0.2, 0.15);
     S.add(pl);
-    add(M.sideTable(), 5.4, G, 1.8);
-    this._toy(add(M.mug('#bf6b47'), 5.35, G + 0.94, 1.75), 'Un chocolat chaud ? La chaleur commence de l\'intérieur.', 'coffret-soiree-cocon');
-    this._steam(5.35, G + 1.25, 1.75, { count: 6, size: 0.35, height: 1.0 });
-    add(M.floorLamp(), 12.6, G, -2.3);
-    add(M.plant(1.25, '#efe2cf'), 12.7, G, 1.9);
-    add(M.frame(0, 1.2, 1.5), 6.6, G + 3.2, BACK + 0.05);
-    this._prop('chaussons', '#efe2cf', 'chaussons-nuage', VUES.salon, 9.6, G + 0.04, 1.2, { ry: -0.35, scale: 1.25, hotspotY: 0.75 });
-    this._steam(9.6, G + 0.6, 1.2, { count: 7, size: 0.45, height: 1.2, color: '#ffd9a8', warm: true });
+    add(M.rug(5.2, 3.8, ['#e9d3b6', '#c88f62', '#f4e8d8', '#b8774e']), 9.0, G, 0.4);
+    P('coffee_table_round_01', 8.8, G, 0.3, { s: 1.6 });
+    P('tea_set_01', 8.75, G + 0.79, 0.25, { s: 1.35, ligne: 'Une infusion bien chaude, et la soirée commence.', productId: 'coffret-soiree-cocon' });
+    this._steam(8.55, G + 1.15, 0.2, { count: 5, size: 0.28, height: 0.8 });
+    P('ArmChair_01', 12.2, G, 0.5, { ry: -0.8, ligne: 'Le fauteuil de lecture, avec vue sur le feu.' });
+    P('side_table_01', 12.7, G, -1.5, { ry: -0.3 });
+    P('vintage_oil_lamp', 12.75, G + 1.1, -1.5, { s: 1.5 });
+    this._bulb(12.75, G + 1.75, -1.5, 0.5);
+    P('potted_plant_01', 13.0, G, -2.85, { s: 1.75, ligne: plante });
+    add(M.floorLamp('#f4e3c9'), 5.25, G, -2.95);
+    this._prop('chaussons', '#efe2cf', 'chaussons-nuage', VUES.salon, 9.9, G + 0.03, 1.45, { ry: -0.45, scale: 0.72, hotspotY: 0.6 });
+    this._steam(9.9, G + 0.4, 1.45, { count: 6, size: 0.35, height: 0.9, color: '#ffd9a8', warm: true });
 
-    /* CUISINE */
+    /* CUISINE : un vrai repas de famille */
     add(M.kitchen(3.4), 15.5, G, BACK + 0.55);
+    this._window(15.5, G + 3.75, BACK + 0.02, 1.5, 1.4);
+    P('vintage_electric_kettle', 16.6, G + 1.8, -3.0, { s: 1.8, ligne: 'L\'eau chauffe pour l\'infusion du soir.', productId: 'bandeau-cocon' });
+    this._steam(16.6, G + 2.4, -3.0, { count: 4, size: 0.22, height: 0.7 });
+    P('wooden_cutting_board', 15.3, G + 1.8, -2.95, { s: 2 });
+    P('jug_01', 14.3, G + 1.8, -3.0, { s: 1.8 });
     add(M.stairs(12, 0.45, 0.38, 1.9), 17.8, G, -2.45);
-    add(M.roundTable(), 17.4, G, 1.0);
-    add(M.chair('#bf6b47'), 15.9, G, 1.3, Math.PI / 2 + 0.2);
-    add(M.chair('#a3ad8f'), 18.9, G, 1.4, -Math.PI / 2 - 0.2);
-    this._toy(add(M.teapot('#a3ad8f'), 17.0, G + 1.4, 0.7), 'Une infusion après le repas et un peu de chaleur sur le ventre : la digestion en douceur.', 'bandeau-cocon');
-    this._steam(17.36, G + 2.0, 0.7, { count: 5, size: 0.3, height: 0.9 });
-    add(M.mug('#efe2cf'), 17.9, G + 1.4, 1.5, 0.6);
-    this._prop('bandeau', '#d99a8a', 'bandeau-cocon', VUES.cuisine, 17.75, G + 1.41, 1.15, { ry: 0.5, scale: 0.95, hotspotY: 0.6 });
-    this._prop('housse', '#efe2cf', 'housse-rechange', VUES.cuisine, 15.85, G + 1.02, 1.3, { ry: 1.2, scale: 0.55, hotspotY: 0.6 });
-    add(M.pendant('#bf6b47'), 17.4, G + 3.85, 1.0);
-    add(M.plant(0.9, '#bf6b47'), 14.3, G, 2.6);
+    P('round_wooden_table_01', 17.9, G, 1.3, { s: 1.5 });
+    P('dining_chair_02', 16.5, G, 1.45, { ry: Math.PI / 2 });
+    P('dining_chair_02', 19.3, G, 1.15, { ry: -Math.PI / 2 });
+    P('wooden_bowl_01', 18.45, G + 1.52, 0.85, { s: 1.8 });
+    P('food_apple_01', 18.35, G + 1.58, 0.8, { s: 1.8 });
+    P('lemon', 18.6, G + 1.66, 0.95, { s: 1.8 });
+    P('food_pears_asian_01', 18.4, G + 1.6, 1.02, { s: 1.8, ry: 0.6 });
+    P('carved_wooden_plate', 17.3, G + 1.52, 0.75, { s: 1.8 });
+    P('carrot_cake', 17.3, G + 1.59, 0.75, { s: 1.8, ligne: 'Après une part de gâteau, un peu de chaleur sur le ventre aide à digérer.', productId: 'bandeau-cocon' });
+    P('croissant', 18.7, G + 1.52, 1.85, { s: 1.8, ry: 0.4 });
+    this._prop('bandeau', '#d99a8a', 'bandeau-cocon', VUES.cuisine, 17.75, G + 1.53, 1.6, { ry: 0.4, scale: 0.75, hotspotY: 0.45 });
+    this._prop('housse', '#efe2cf', 'housse-rechange', VUES.cuisine, 16.5, G + 0.95, 1.45, { ry: 1.2, scale: 0.5, hotspotY: 0.5 });
+    P('hanging_industrial_lamp', 17.9, 5.0, 1.3, { s: 1.15 });
+    this._bulb(17.9, 3.55, 1.3);
+    P('painted_wooden_cabinet', 21.85, G, 1.6, { ry: -Math.PI / 2, ligne: 'Le buffet de famille, plein de bocaux et de souvenirs.' });
+    P('potted_plant_04', 21.9, G + 2.36, 2.3, { s: 2 });
+    P('pot_enamel_01', 21.95, G + 2.36, 0.9, { s: 2 });
 
-    /* CHAMBRE */
+    /* CHAMBRE : se blottir */
     this._toy(add(M.bed('#e6b9ad'), 15.85, F1, -0.75), 'Glissez le bandeau sur le ventre 20 minutes avant de dormir.', 'bandeau-cocon');
-    add(M.nightstand(), 18.4, F1, -0.55);
-    const c2 = M.candle(0.25);
-    add(c2, 18.62, F1 + 0.9, -0.35);
-    this.flickers.push({ glow: c2.userData.flicker });
-    add(M.rug(3.2, 2.4, ['#f0d6cc', '#e6b9ad', '#fbf4ea']), 19.6, F1, 1.6);
-    add(M.frame(1, 1.0, 1.2), 15.85, F1 + 3.4, BACK + 0.05);
-    add(M.plant(1, '#efe2cf'), 21.6, F1, 2.4);
+    this._window(15.85, F1 + 3.55, BACK + 0.02, 1.5, 1.5);
+    P('painted_wooden_nightstand', 18.25, F1, -0.6);
+    P('vintage_oil_lamp', 18.05, F1 + 1.24, -0.75, { s: 1.4 });
+    this._bulb(18.05, F1 + 1.85, -0.75, 0.5);
+    P('alarm_clock_01', 18.5, F1 + 1.24, -0.4, { ry: -0.4, ligne: 'Le réveil peut attendre : encore cinq minutes au chaud.' });
+    P('hanging_picture_frame_01', 20.7, F1 + 3.3, BACK + 0.02, { s: 2.2 });
+    P('wicker_basket_02', 19.7, F1, 0.4, { s: 2.2 });
+    P('potted_plant_02', 22.0, F1, 0.6, { s: 1.7, ligne: plante });
+    add(M.rug(3.2, 2.4, ['#f0d6cc', '#e6b9ad', '#fbf4ea']), 19.4, F1, 1.7);
     // garde-corps de la trémie
-    S.add(box(4.8, 0.08, 0.08, 0.02, mats.wood('#8a5a36'), 20.1, F1 + 1.1, -1.2));
-    for (let x = 17.9; x <= 22.4; x += 0.5) S.add(box(0.05, 1.1, 0.05, 0.01, mats.wood('#8a5a36'), x, F1 + 0.55, -1.2));
-    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.chambre, 15.9, F1 + 1.28, 0.55, { ry: -0.15, scale: 1.05, hotspotY: 0.6 });
-    this._steam(15.9, F1 + 1.6, 0.6, { count: 6, size: 0.4, height: 1.0, color: '#ffd9a8', warm: true });
+    S.add(box(4.8, 0.07, 0.07, 0.02, mats.wood('#8a5a36'), 20.1, F1 + 1.1, -1.2));
+    for (let x = 17.9; x <= 22.4; x += 0.45) S.add(box(0.045, 1.1, 0.045, 0.01, mats.wood('#8a5a36'), x, F1 + 0.55, -1.2));
+    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.chambre, 15.9, F1 + 1.3, 0.55, { ry: -0.15, scale: 0.85, hotspotY: 0.45 });
+    this._prop('chaussons', '#e6b9ad', 'chaussons-nuage', VUES.chambre, 18.0, F1 + 0.02, 1.25, { ry: -0.5, scale: 0.62, hotspotY: 0.55 });
 
-    /* COIN LECTURE */
-    this._toy(add(M.bookshelf(), 11.4, F1, BACK + 0.35), 'Un bon livre, la nuque au chaud, et la soirée est parfaite.', 'nuque-douceur');
-    add(M.armchair('#e6b9ad'), 8.2, F1, -0.2, 0.25);
+    /* COIN LECTURE : un livre, la nuque au chaud */
+    P('wooden_bookshelf_worn', 11.6, F1, BACK + 0.6, { ligne: 'Des livres, des plaids, et la nuque bien au chaud.', productId: 'nuque-douceur' });
+    P('book_encyclopedia_set_01', 11.0, F1 + 4.12, BACK + 0.55, { s: 1.8 });
+    this._window(7.6, F1 + 2.9, BACK + 0.02, 1.5, 2.1);
+    P('ArmChair_01', 8.2, F1, -0.2, { ry: 0.35, ligne: 'Le fauteuil préféré pour lire jusqu\'à tard.', productId: 'nuque-douceur' });
+    this._prop('nuque', '#7a5638', 'nuque-douceur', VUES.lecture, 8.25, F1 + 0.9, -0.05, { ry: 0.35, scale: 0.62, hotspotY: 0.45 });
+    P('Ottoman_01', 9.0, F1, 1.5, { ry: 0.3 });
+    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.lecture, 9.0, F1 + 1.25, 1.5, { ry: -0.4, scale: 0.6, hotspotY: 0.45 });
+    P('side_table_tall_01', 6.7, F1, -0.7);
+    P('potted_plant_04', 6.7, F1 + 1.52, -0.7, { s: 2 });
+    P('vintage_grandfather_clock_01', 13.0, F1, -1.2, { ry: -Math.PI / 2, ligne: 'L\'horloge sonne l\'heure du thé (et de la bouillotte).' });
+    P('Rockingchair_01', 6.1, F1, 1.0, { ry: 0.9, ligne: 'Le fauteuil à bascule de mamie, tout doux sous un plaid.' });
     add(M.floorLamp('#fbefdc'), 9.75, F1, -2.5);
-    this._toy(add(M.pouf('#d9a679'), 10.8, F1, 1.4), 'Le pouf idéal pour poser ses pieds… en chaussons, bien sûr.', 'chaussons-nuage');
-    add(M.rug(4.6, 3.2, ['#e8d1ba', '#a3ad8f', '#f4e8d8', '#c98b62']), 8.8, F1, 0.6);
+    add(M.rug(4.6, 3.2, ['#e8d1ba', '#a3ad8f', '#f4e8d8', '#c98b62']), 8.6, F1, 0.6);
     add(M.ladder(5.7), 5.6, F1, BACK + 0.45);
-    add(M.plant(0.9), 12.7, F1, 2.3);
-    this._prop('nuque', '#7a5638', 'nuque-douceur', VUES.lecture, 8.15, F1 + 1.13, 0.3, { ry: 0.25, scale: 1.2, hotspotY: 0.5 });
-    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.lecture, 10.8, F1 + 0.66, 1.4, { ry: -0.5, scale: 0.75, hotspotY: 0.6 });
 
     /* SALLE DE BAIN (décor) */
     this._toy(add(M.bathtub(), -0.6, F1, -2.3), 'Un bain chaud, puis la bouillotte sur la nuque : le duo parfait.', 'nuque-douceur');
     add(M.mirror(), 2.6, F1 + 3.0, BACK + 0.08);
     add(M.towel('#e6b9ad'), -3.4, F1 + 0.2, BACK + 0.2);
-    add(M.plant(0.9, '#efe2cf'), 3.4, F1, 1.8);
+    P('potted_plant_02', 3.4, F1, 1.6, { s: 1.6 });
     const c3 = M.candle(0.3);
     add(c3, 1.4, F1 + 1.1, -2.1);
     this.flickers.push({ glow: c3.userData.flicker });
-    add(M.rug(2.4, 1.6, ['#f4ede3', '#c9d3cf', '#ffffff']), -0.4, F1, 0.6);
 
-    /* GRENIER */
+    /* GRENIER : les cadeaux et les souvenirs */
     add(M.rug(5.6, 4, ['#f0d6cc', '#c48a5a', '#f4e8d8', '#e6b9ad']), 9, F2, 0.5);
-    const tbl = new THREE.Group();
-    tbl.add(box(2.4, 0.14, 1.6, 0.05, mats.wood('#c49a72'), 0, 0.7, 0));
-    [[-1, -0.6], [1, -0.6], [-1, 0.6], [1, 0.6]].forEach(([x, z]) => tbl.add(box(0.12, 0.7, 0.12, 0.03, mats.wood('#c49a72'), x, 0.35, z)));
-    add(tbl, 9, F2, 0.4);
-    this._prop('coffret', '#efe2cf', 'coffret-soiree-cocon', VUES.grenier, 9, F2 + 0.78, 0.4, { ry: -0.15, scale: 1.1, hotspotY: 0.9 });
+    P('small_wooden_table_01', 9, F2, 0.4, { s: 2.4 });
+    this._prop('coffret', '#efe2cf', 'coffret-soiree-cocon', VUES.grenier, 9, F2 + 1.27, 0.45, { ry: -0.15, scale: 0.7, hotspotY: 0.7 });
+    P('vintage_suitcase', 3.8, F2, -1.5, { s: 1.25, ry: 0.25, ligne: 'La valise des vacances d\'hiver… direction le chalet.' });
+    P('wooden_crate_01', 13.1, F2, -1.6);
+    P('cardboard_box_01', 13.1, F2 + 0.7, -1.6, { ry: 0.3 });
+    P('cardboard_box_01', 14.5, F2, -0.5, { ry: 0.9 });
+    P('Lantern_01', 13.0, F2 + 1.38, -1.55, { s: 2.6 });
+    this._bulb(13.0, F2 + 1.7, -1.55, 0.6);
+    P('wicker_basket_02', 5.2, F2, 1.7, { s: 2.2 });
+    P('fir_sapling_medium', 13.4, F2, 1.3, { hauteur: 2.8, ligne: 'Le petit sapin du grenier veille sur les cadeaux.' });
     const giftLine = 'Psst… le coffret « Soirée Cocon » fait toujours plaisir.';
-    this._toy(add(M.giftBox(1.0, 0.8, 1.0, '#bf6b47'), 3.4, F2, -1.6, 0.3), giftLine, 'coffret-soiree-cocon');
-    this._toy(add(M.giftBox(0.7, 0.6, 0.7, '#a3ad8f', '#bf6b47'), 3.5, F2 + 0.92, -1.6, -0.2), giftLine, 'coffret-soiree-cocon');
-    this._toy(add(M.giftBox(0.9, 0.5, 0.7, '#e6b9ad'), 4.2, F2, 1.2, 0.6), giftLine, 'coffret-soiree-cocon');
-    this._toy(add(M.giftBox(1.1, 0.9, 0.9, '#efe2cf', '#bf6b47'), 13.4, F2, -0.9, -0.3), giftLine, 'coffret-soiree-cocon');
-    this._toy(add(M.giftBox(0.6, 0.5, 0.6, '#c48a5a'), 13.0, F2 + 1.02, -0.9, 0.4), giftLine, 'coffret-soiree-cocon');
-    this._toy(add(M.fir(2.6, '#7f8f6d'), 13.6, F2, 1.2), 'Le petit sapin du grenier veille sur les cadeaux.');
-    const garland = M.garland([
+    this._toy(add(M.giftBox(0.8, 0.6, 0.8, '#bf6b47'), 12.5, F2, 2.0, 0.3), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(0.6, 0.45, 0.6, '#a3ad8f', '#bf6b47'), 14.3, F2, 2.1, -0.2), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(0.7, 0.4, 0.5, '#e6b9ad'), 4.6, F2, 0.6, 0.6), giftLine, 'coffret-soiree-cocon');
+    S.add(M.garland([
       new THREE.Vector3(2.4, F2 + 3.0, -1.5),
       new THREE.Vector3(5.5, F2 + 3.6, -1.0),
       new THREE.Vector3(9, F2 + 4.6, -1.2),
       new THREE.Vector3(12.5, F2 + 3.6, -1.0),
       new THREE.Vector3(15.6, F2 + 3.0, -1.5),
-    ], 46);
-    S.add(garland);
-    const g2 = M.garland([
-      new THREE.Vector3(12.6, F2 + 2.4, 1.3),
-      new THREE.Vector3(14.4, F2 + 1.6, 1.5),
-      new THREE.Vector3(12.9, F2 + 1.0, 1.7),
-      new THREE.Vector3(14.6, F2 + 0.4, 1.4),
-    ], 18);
-    S.add(g2);
+    ], 46));
+  }
+
+  // Ampoule allumée (lueur douce, captée par l'effet de halo)
+  _bulb(x, y, z, size = 0.8) {
+    const g = M.glowSprite('#ffc982', size * 2.4, 0.45);
+    g.position.set(x, y, z);
+    this.scene.add(g);
+    const b = M.mesh(new THREE.SphereGeometry(0.06 * size, 10, 8), mats.glow('#ffe2b0', 4), { cast: false });
+    b.position.set(x, y, z);
+    this.scene.add(b);
   }
 
   /* ---------------------- Chemin de points 3D ---------------------- */
@@ -825,6 +935,10 @@ export class World {
     this.width = w;
     this.height = h;
     this.renderer.setSize(w, h, false);
+    if (this.composer) {
+      this.composer.setPixelRatio(this.renderer.getPixelRatio());
+      this.composer.setSize(w, h);
+    }
     this.camera.aspect = w / h;
     this.portrait = w / h < 0.9;
     this.camera.updateProjectionMatrix();
@@ -909,7 +1023,12 @@ export class World {
     this.roomLight.position.copy(this.lightPts[i]).lerp(this.lightPts[i + 1], fe);
     const fireNear = 1 - Math.min(1, Math.abs(se - VUES.salon));
     const flick = this.reducedMotion ? 0 : (Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.5) * 3 * fireNear;
-    this.roomLight.intensity = lerp(22, 12, outside) + flick;
+    this.roomLight.intensity = lerp(9, 12, outside);
+    // dehors, la neige renvoie la lumière du soir
+    this.hemi.intensity = lerp(0.6, 1.5, outside);
+    this.key.intensity = lerp(1.25, 2.2, outside);
+    this.fireLight.intensity = 9 + flick * 1.5;
+    this.lampLight.position.copy(LAMPES[i]).lerp(LAMPES[i + 1], fe);
 
     // petite lumière chaude qui suit le curseur
     if (!this.portrait && !this.reducedMotion) {
@@ -1019,7 +1138,8 @@ export class World {
   }
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
   }
 }
 

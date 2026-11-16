@@ -27,6 +27,10 @@ en 3D, les objets du décor réagissent et proposent le produit qui va avec.
 - **Panier** avec barre « Plus que X € pour la livraison offerte » et suggestions pour
   compléter le panier.
 - Boutique filtrable, engagements, FAQ, newsletter « Club Cocon », pied de page.
+- **Une maison réaliste et habitée** : vrais meubles et objets (canapé, fauteuils, horloge, bottes,
+  gâteau, fruits, livres, lampe à pétrole, valise…), parquet, carrelage, enduits, tissus en lin,
+  polaire, fausse fourrure et laine, éclairage d'intérieur au coin du feu, ombres douces et halo
+  des lampes.
 - Version mobile, mode « animations réduites » respecté, et une version sans 3D si le navigateur
   ne la supporte pas.
 
@@ -87,5 +91,14 @@ js/scene/models.js      les modèles 3D (produits et mobilier)
 js/scene/studio.js      le "studio photo" 3D des fiches produit
 js/scene/textures.js    textures dessinées (parquet, papier peint…)
 assets/                 logo, favicon
+assets/models/          meubles et objets 3D (format .glb compressé)
+assets/textures/        textures réalistes (bois, plâtre, tissus…) et éclairage d'intérieur
+js/scene/realisme.js    chargement des meubles et des matières réalistes
 vendor/three/           moteur 3D three.js (licence MIT)
 ```
+
+## Crédits
+
+Meubles, objets, textures et éclairage d'intérieur : [Poly Haven](https://polyhaven.com),
+licence CC0 (utilisation libre, y compris commerciale). Les fichiers ont été allégés pour le web
+(textures WebP, géométrie compressée).

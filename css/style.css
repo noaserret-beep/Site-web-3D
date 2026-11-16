@@ -231,7 +231,11 @@ main { position: relative; z-index: 2; pointer-events: none; }
   padding: calc(var(--header-h) + 20px) clamp(20px, 6vw, 90px) 80px;
   position: relative;
 }
-.hero__content { max-width: 560px; }
+.hero__content {
+  max-width: 560px; padding: 34px 36px 30px; border-radius: var(--radius);
+  background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.5); box-shadow: var(--shadow);
+}
 .hero h1 { margin-bottom: 22px; }
 .hero__ctas { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 26px; }
 .hero__chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0; }
@@ -242,8 +246,8 @@ main { position: relative; z-index: 2; pointer-events: none; }
 .scroll-hint {
   position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 12px;
-  font-size: 0.85rem; color: var(--muted); letter-spacing: 0.04em;
-  padding: 8px 16px 8px 10px; border-radius: 999px; background: rgba(251, 246, 239, 0.55); backdrop-filter: blur(6px);
+  font-size: 0.85rem; color: var(--brun); letter-spacing: 0.04em;
+  padding: 8px 16px 8px 10px; border-radius: 999px; background: rgba(251, 246, 239, 0.8); backdrop-filter: blur(6px);
 }
 .scroll-hint__mouse { width: 22px; height: 34px; border: 2px solid var(--brun); border-radius: 12px; position: relative; }
 .scroll-hint__mouse span { position: absolute; left: 50%; top: 6px; width: 4px; height: 7px; margin-left: -2px; background: var(--brun); border-radius: 2px; animation: wheel 1.8s ease-in-out infinite; }

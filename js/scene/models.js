@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as T from './textures.js';
+import { pbr, tissu, tex } from './realisme.js';
 
 /* ------------------------------------------------------------------ */
 /* Outils                                                              */
@@ -37,21 +38,17 @@ function cached(key, make) {
 export const mats = {
   matte: (color, rough = 0.85) =>
     cached('m' + color + rough, () => new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 })),
-  fabric: (color) =>
-    cached('f' + color, () => {
-      const c = new THREE.Color(color);
-      return new THREE.MeshPhysicalMaterial({
-        color: c,
-        roughness: 0.95,
-        sheen: 0.85,
-        sheenRoughness: 0.5,
-        sheenColor: c.clone().lerp(new THREE.Color('#fff4e6'), 0.4),
-      });
-    }),
+  fabric: (color) => cached('f' + color, () => tissu('rough_linen', color, { repeat: [3, 3], normal: 0.7, sheen: 0.6 })),
+  fleece: (color, rep = 2) => cached('fl' + color + rep, () => tissu('polar_fleece', color, { repeat: [rep, rep], normal: 1.3, sheen: 0.9 })),
+  knit: (color, rep = 2) => cached('kn' + color + rep, () => tissu('knitted_fleece', color, { repeat: [rep, rep], normal: 1.4, sheen: 0.7 })),
+  fur: (color, rep = 3) => cached('fu' + color + rep, () => tissu('faux_fur_geometric', color, { repeat: [rep, rep * 0.4], normal: 1.6, sheen: 1 })),
+  boucle: (color, rep = 2) => cached('bo' + color + rep, () => tissu('wool_boucle', color, { repeat: [rep, rep], normal: 1.4, sheen: 0.8 })),
+  velvet: (color, rep = 2) => cached('ve' + color + rep, () => tissu('velour_velvet', color, { repeat: [rep, rep], normal: 0.8, sheen: 1 })),
   ceramic: (color) =>
     cached('c' + color, () =>
       new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.25 })),
-  wood: (color = '#b98557') => cached('w' + color, () => new THREE.MeshStandardMaterial({ color, roughness: 0.65 })),
+  wood: (color = '#b98557') =>
+    cached('w' + color, () => pbr('fine_grained_wood', { color: '#' + new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.45).getHexString(), repeat: [1, 1], rough: 0.9 })),
   glow: (color, intensity = 1.6) =>
     cached('g' + color + intensity, () =>
       new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.5 })),
@@ -114,7 +111,7 @@ function tint(hex, k, to = '#fff6ea') {
 
 function slipper(color, side = 1) {
   const g = new THREE.Group();
-  const plush = mats.fabric(color);
+  const plush = mats.knit(color, 3).clone();
   plush.side = THREE.DoubleSide;
 
   // Semelle : empreinte de pied extrudée
@@ -139,10 +136,10 @@ function slipper(color, side = 1) {
   });
   soleGeo.rotateX(Math.PI / 2);
   soleGeo.translate(0, 0.08, 0);
-  g.add(mesh(soleGeo, mats.matte(shade(color, 0.62), 0.9)));
+  g.add(mesh(soleGeo, mats.velvet(shade(color, 0.55), 6)));
 
   // Semelle intérieure moelleuse
-  const inner = mesh(new THREE.ShapeGeometry(shape, 24), mats.fabric(tint(color, 0.45)));
+  const inner = mesh(new THREE.ShapeGeometry(shape, 24), mats.fur(tint(color, 0.5), 8));
   inner.geometry.rotateX(-Math.PI / 2);
   inner.scale.set(0.9, 1, 0.92);
   inner.position.y = 0.121;
@@ -152,14 +149,14 @@ function slipper(color, side = 1) {
   const toe = new THREE.SphereGeometry(1, 48, 24, 0, Math.PI, 0, Math.PI / 2);
   toe.scale(0.205, 0.27, 0.52);
   toe.translate(side * 0.008, 0.1, -0.03);
-  fluff(toe, 0.006, 26);
+  fluff(toe, 0.003, 26);
   g.add(mesh(toe, plush));
 
   // Contrefort du talon
   const heel = new THREE.CylinderGeometry(1, 1, 0.19, 40, 4, true, Math.PI / 2, Math.PI);
   heel.scale(0.188, 1, 0.47);
   heel.translate(0, 0.19, -0.03);
-  fluff(heel, 0.005, 26);
+  fluff(heel, 0.003, 26);
   g.add(mesh(heel, plush));
 
   // Col en fausse fourrure
@@ -174,8 +171,8 @@ function slipper(color, side = 1) {
   }
   const collarCurve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
   const collar = new THREE.TubeGeometry(collarCurve, 90, 0.042, 12, true);
-  fluff(collar, 0.012, 34);
-  g.add(mesh(collar, mats.fabric(tint(color, 0.55))));
+  fluff(collar, 0.014, 34);
+  g.add(mesh(collar, mats.fur(tint(color, 0.6), 2)));
 
   // Petite étiquette brodée
   const tag = box(0.008, 0.06, 0.09, 0.004, mats.matte('#5a3a1e'));
@@ -265,8 +262,8 @@ export function makeBandeau(color = '#e6b9ad') {
     const r = R - v.z;
     v.set(r * Math.sin(a), v.y + over * over * 0.35, R - r * Math.cos(a));
   };
-  g.add(mesh(quiltedGeometry({ length: L, width: 0.52, thick: TH, cells: 6, transform: tf }), mats.fabric(color)));
-  const strapMat = mats.fabric(shade(color, 0.86));
+  g.add(mesh(quiltedGeometry({ length: L, width: 0.52, thick: TH, cells: 6, transform: tf }), mats.fleece(color, 1)));
+  const strapMat = mats.velvet(shade(color, 0.86), 3);
   const sL = 0.75;
   g.add(mesh(strapGeometry(sL, 0.3, 0.035, L / 2 + sL / 2 - 0.1, tf), strapMat));
   g.add(mesh(strapGeometry(sL, 0.3, 0.035, -(L / 2 + sL / 2 - 0.1), tf), strapMat));
@@ -294,7 +291,7 @@ export function makeNuque(color = '#a3ad8f') {
     const r = R + v.z;
     v.set(r * Math.sin(a), v.y, -r * Math.cos(a));
   };
-  const pad = mesh(quiltedGeometry({ length: 2.1, width: 0.46, thick: 0.3, cells: 7, transform: tf }), mats.fabric(color));
+  const pad = mesh(quiltedGeometry({ length: 2.1, width: 0.46, thick: 0.3, cells: 7, transform: tf }), mats.velvet(color, 1));
   pad.position.y = 0.14;
   g.add(pad);
   const lab = box(0.14, 0.012, 0.09, 0.004, mats.matte('#5a3a1e'));
@@ -308,9 +305,9 @@ export function makeNuque(color = '#a3ad8f') {
 
 export function makeHousse(color = '#efe2cf') {
   const g = new THREE.Group();
-  const a = mesh(quiltedGeometry({ length: 1.1, width: 0.55, thick: 0.07, cells: 4 }), mats.fabric(color));
+  const a = mesh(quiltedGeometry({ length: 1.1, width: 0.55, thick: 0.07, cells: 4 }), mats.fleece(color, 1));
   a.position.y = 0.045;
-  const b = mesh(quiltedGeometry({ length: 1.1, width: 0.55, thick: 0.07, cells: 4 }), mats.fabric(shade(color, 0.92)));
+  const b = mesh(quiltedGeometry({ length: 1.1, width: 0.55, thick: 0.07, cells: 4 }), mats.fleece(shade(color, 0.92), 1));
   b.position.set(0.06, 0.11, 0.04);
   b.rotation.y = 0.18;
   const tagGeo = rboxGeo(0.16, 0.012, 0.1, 0.004);
@@ -431,53 +428,48 @@ export function armchair(color = '#c48a5a') {
 export function plaid(color = '#e6b9ad') {
   const geo = new THREE.PlaneGeometry(1.1, 1.8, 16, 24);
   const p = geo.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i);
-    const x = p.getX(i);
-    p.setZ(i, 0.04 * Math.sin(x * 9) + Math.max(0, -y) * 0.0);
-  }
+  for (let i = 0; i < p.count; i++) p.setZ(i, 0.04 * Math.sin(p.getX(i) * 9));
   geo.computeVertexNormals();
-  const m = mesh(geo, new THREE.MeshStandardMaterial({ map: T.knit(color), roughness: 1, side: THREE.DoubleSide }));
-  return m;
+  const m = new THREE.MeshStandardMaterial({ map: T.knit(color), normalMap: tex('knitted_fleece', 'nor', [3, 4]), roughness: 1, side: THREE.DoubleSide });
+  m.normalScale.set(1.4, 1.4);
+  return mesh(geo, m);
 }
 
 export function fireplace() {
   const g = new THREE.Group();
-  const stone = mats.matte('#efe4d4', 0.9);
-  g.add(box(3, 2.6, 0.7, 0.12, stone, 0, 1.3, 0));
-  g.add(box(3.4, 0.18, 0.95, 0.06, mats.wood('#9b6a43'), 0, 2.65, 0.08));
-  g.add(box(1.7, 1.25, 0.3, 0.1, mats.matte('#3a2618', 1), 0, 0.85, 0.24));
-  g.add(box(2.3, 0.12, 0.6, 0.05, mats.matte('#d8c7b1'), 0, 0.06, 0.55));
+  const brick = pbr('brick_wall_001', { color: '#efe7dd', diffuse: false, repeat: [1.6, 1.4], normal: 1.2 });
+  g.add(box(3, 2.6, 0.7, 0.03, brick, 0, 1.3, 0));
+  g.add(box(3.4, 0.16, 0.95, 0.03, mats.wood('#9b6a43'), 0, 2.66, 0.08));
+  g.add(box(1.7, 1.25, 0.3, 0.04, mats.matte('#1c120b', 1), 0, 0.85, 0.24));
+  g.add(box(2.4, 0.1, 0.7, 0.02, pbr('marble_01', { repeat: [1.2, 0.4] }), 0, 0.05, 0.55));
   // bûches
   const logMat = mats.wood('#6e4527');
   for (let i = 0; i < 3; i++) {
-    const log = mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.1, 10), logMat);
+    const log = mesh(new THREE.CylinderGeometry(0.09, 0.1, 1.0, 12), logMat);
     log.rotation.z = Math.PI / 2;
     log.rotation.y = (i - 1) * 0.25;
-    log.position.set(0, 0.36 + (i === 1 ? 0.14 : 0), 0.34 + (i - 1) * 0.04);
+    log.position.set(0, 0.32 + (i === 1 ? 0.13 : 0), 0.34 + (i - 1) * 0.04);
     g.add(log);
   }
+  // braises
+  const embers = mesh(new THREE.BoxGeometry(1.1, 0.06, 0.4), mats.glow('#ff5a1f', 2.5), { cast: false });
+  embers.position.set(0, 0.24, 0.36);
+  g.add(embers);
   // flammes
   const flames = new THREE.Group();
   const cols = ['#ffb347', '#ff8a3d', '#ffd27a'];
-  for (let i = 0; i < 5; i++) {
-    const fl = mesh(new THREE.ConeGeometry(0.13 + (i % 2) * 0.05, 0.55 + (i % 3) * 0.12, 12), mats.glow(cols[i % 3], 2.2), { cast: false });
-    fl.position.set((i - 2) * 0.17, 0.72, 0.38);
+  for (let i = 0; i < 6; i++) {
+    const fl = mesh(new THREE.ConeGeometry(0.09 + (i % 2) * 0.05, 0.45 + (i % 3) * 0.14, 12), mats.glow(cols[i % 3], 3.2), { cast: false });
+    fl.position.set((i - 2.5) * 0.14, 0.62, 0.36 + (i % 2) * 0.06);
     fl.userData.phase = i * 1.7;
     flames.add(fl);
   }
   g.add(flames);
-  const gl = glowSprite('#ffb05a', 2.6, 0.55);
-  gl.position.set(0, 0.85, 0.6);
+  const gl = glowSprite('#ff9a4a', 2.4, 0.45);
+  gl.position.set(0, 0.8, 0.6);
   g.add(gl);
   g.userData.flames = flames;
   g.userData.glow = gl;
-  // bougies sur le manteau
-  [[-1.1, 0.35], [-0.85, 0.22], [1.15, 0.28]].forEach(([x, h]) => {
-    const c = candle(h);
-    c.position.set(x, 2.74, 0.1);
-    g.add(c);
-  });
   return g;
 }
 
@@ -496,11 +488,27 @@ export function candle(h = 0.3) {
   return g;
 }
 
-export function rug(w = 4, d = 3, colors) {
-  const m = mesh(new THREE.CylinderGeometry(1, 1, 0.04, 64), new THREE.MeshStandardMaterial({ map: T.rugTexture(colors), roughness: 1 }), { cast: false });
-  m.scale.set(w / 2, 1, d / 2);
-  m.position.y = 0.02;
-  return m;
+export function rug(w = 4, d = 3, colors = ['#e9d3b6']) {
+  // tapis en laine, bord légèrement plus foncé
+  const c = new THREE.Color(colors[0]).lerp(new THREE.Color('#f6eee4'), 0.35);
+  const wool = (col, r) => {
+    const m = new THREE.MeshStandardMaterial({
+      color: col,
+      map: tex('poly_wool_herringbone', 'diff', r),
+      normalMap: tex('poly_wool_herringbone', 'nor', r),
+      roughnessMap: tex('poly_wool_herringbone', 'rough', r),
+      roughness: 1,
+    });
+    m.normalScale.set(1.4, 1.4);
+    return m;
+  };
+  const g = new THREE.Group();
+  const border = mesh(rboxGeo(w, 0.035, d, 0.015, 2), wool('#' + c.clone().multiplyScalar(0.78).getHexString(), [w / 1.2, d / 1.2]), { cast: false });
+  border.position.y = 0.018;
+  const inner = mesh(rboxGeo(w - 0.36, 0.04, d - 0.36, 0.015, 2), wool('#' + c.getHexString(), [w / 1.2, d / 1.2]), { cast: false });
+  inner.position.y = 0.021;
+  g.add(border, inner);
+  return g;
 }
 
 export function plant(scale = 1, potColor = '#c98b62') {
@@ -601,27 +609,29 @@ export function teapot(color = '#a3ad8f') {
 export function bed(duvet = '#e6b9ad') {
   const g = new THREE.Group();
   const frame = mats.wood('#c49a72');
-  g.add(box(3.3, 0.45, 4.1, 0.12, frame, 0, 0.42, 0));
-  g.add(box(3.4, 2.1, 0.32, 0.16, mats.fabric('#d9a08b'), 0, 1.3, -2.0));
-  g.add(box(3.1, 0.45, 3.8, 0.18, mats.fabric('#fbf4ea'), 0, 0.85, 0.05));
-  const duv = rboxGeo(3.25, 0.32, 2.9, 0.15, 4).clone();
+  g.add(box(3.3, 0.45, 4.1, 0.05, frame, 0, 0.42, 0));
+  g.add(box(3.4, 2.1, 0.3, 0.08, mats.velvet('#c98f7a', 2), 0, 1.3, -2.0));
+  g.add(box(3.1, 0.45, 3.8, 0.12, tissu('rough_linen', '#fbf4ea', { repeat: [3, 3] }), 0, 0.85, 0.05));
+  const duv = rboxGeo(3.25, 0.3, 2.9, 0.14, 4).clone();
   fluff(duv, 0.025, 4);
-  const d = mesh(duv, mats.fabric(duvet));
-  d.position.set(0, 1.12, 0.55);
+  const d = mesh(duv, tissu('waffle_pique_cotton', duvet, { repeat: [5, 5], normal: 1.2 }));
+  d.position.set(0, 1.1, 0.55);
   g.add(d);
-  const fold = box(3.27, 0.22, 0.5, 0.1, mats.fabric(tint(duvet, 0.5)), 0, 1.22, -0.75);
-  g.add(fold);
-  [[-0.75, 0], [0.75, 0]].forEach(([x]) => {
+  g.add(box(3.27, 0.2, 0.5, 0.08, tissu('rough_linen', '#f6efe6', { repeat: [3, 1] }), 0, 1.2, -0.75));
+  [-0.75, 0.75].forEach((x) => {
     const pg = rboxGeo(1.2, 0.36, 0.7, 0.17, 4).clone();
     fluff(pg, 0.02, 5);
-    const p = mesh(pg, mats.fabric('#fffaf2'));
+    const p = mesh(pg, tissu('rough_linen', '#fffaf3', { repeat: [2, 1] }));
     p.position.set(x, 1.28, -1.45);
     p.rotation.x = -0.25;
     g.add(p);
   });
-  const deco = box(0.8, 0.5, 0.25, 0.12, mats.fabric('#bf6b47'), 0, 1.36, -1.08);
+  const deco = box(0.8, 0.5, 0.25, 0.12, mats.velvet('#bf6b47', 1), 0, 1.36, -1.08);
   deco.rotation.x = -0.3;
   g.add(deco);
+  // plaid en maille au pied du lit
+  const throwB = box(3.3, 0.06, 1.0, 0.03, mats.knit('#d9a679', 3), 0, 1.27, 1.45);
+  g.add(throwB);
   return g;
 }
 
@@ -771,31 +781,21 @@ export function doormat(text = 'Bienvenue') {
 
 export function kitchen(len = 3.6) {
   const g = new THREE.Group();
-  const cab = mats.matte('#a9b399', 0.7);
-  const top = mats.wood('#c9a27a');
-  g.add(box(len, 1.7, 1.1, 0.06, cab, 0, 0.85, 0));
-  g.add(box(len + 0.2, 0.12, 1.25, 0.04, top, 0, 1.76, 0.04));
+  const cab = pbr('kitchen_wood', { color: '#a7b29a', diffuse: false, repeat: [1, 1], normal: 0.6 });
+  const top = pbr('marble_01', { repeat: [2, 0.6] });
+  g.add(box(len, 1.7, 1.1, 0.02, cab, 0, 0.85, 0));
+  g.add(box(len + 0.2, 0.1, 1.25, 0.02, top, 0, 1.75, 0.04));
   const n = Math.round(len / 1.2);
   const dw = len / n;
+  const door = pbr('kitchen_wood', { color: '#b3bda6', diffuse: false, repeat: [0.5, 1], normal: 0.6 });
+  const brass = new THREE.MeshStandardMaterial({ color: '#c9a25a', metalness: 0.8, roughness: 0.35 });
   for (let i = 0; i < n; i++) {
     const x = -len / 2 + dw * (i + 0.5);
-    g.add(box(dw - 0.08, 1.35, 0.04, 0.03, mats.matte('#b8c1a8', 0.7), x, 0.82, 0.56));
-    g.add(box(0.3, 0.05, 0.05, 0.02, mats.matte('#7a5638', 0.4), x, 1.35, 0.6));
+    g.add(box(dw - 0.08, 1.35, 0.04, 0.01, door, x, 0.82, 0.56));
+    g.add(box(0.3, 0.04, 0.05, 0.02, brass, x, 1.35, 0.6));
   }
-  // étagère + bocaux
-  g.add(box(len - 0.4, 0.1, 0.5, 0.03, top, 0, 3.3, -0.3));
-  const jarCols = ['#efe2cf', '#d9a679', '#c98b62', '#a3ad8f'];
-  const jars = Math.floor((len - 0.6) / 0.5);
-  for (let i = 0; i < jars; i++) {
-    const j = mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42 + (i % 3) * 0.08, 18), mats.ceramic(jarCols[i % 4]));
-    j.position.set(-((jars - 1) * 0.5) / 2 + i * 0.5, 3.56 + (i % 3) * 0.04, -0.3);
-    g.add(j);
-  }
-  // plaque + bouilloire
-  const kettle = teapot('#efe2cf');
-  kettle.scale.setScalar(0.8);
-  kettle.position.set(len / 2 - 0.6, 1.82, 0);
-  g.add(kettle);
+  // crédence carrelée
+  g.add(box(len, 1.2, 0.04, 0.01, pbr('floor_tiles_06', { repeat: [len / 1.4, 0.9], color: '#fbf6ee' }), 0, 2.4, -0.53));
   return g;
 }
 

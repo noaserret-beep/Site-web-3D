@@ -182,43 +182,45 @@ export function knit(base = '#e6b9ad', stripe = '#f6ece0') {
 }
 
 export function windowView() {
+  // nuit d'hiver : ciel bleu profond, jardin enneigé, flocons flous
   return canvasTexture('window', 256, 320, (ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, '#3d4a6b');
-    g.addColorStop(0.55, '#a77f86');
-    g.addColorStop(0.8, '#f0b98a');
-    g.addColorStop(1, '#f6d6b0');
+    g.addColorStop(0, '#141c2e');
+    g.addColorStop(0.55, '#2c3a55');
+    g.addColorStop(0.78, '#5b6680');
+    g.addColorStop(1, '#8d93a6');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
-    // collines enneigées
-    ctx.fillStyle = '#f7ece0';
+    ctx.filter = 'blur(3px)';
+    ctx.fillStyle = '#1b2436';
+    [[0.12, 0.83, 70], [0.3, 0.86, 52], [0.82, 0.82, 80]].forEach(([x, y, t]) => {
+      ctx.beginPath();
+      ctx.moveTo(w * x, h * y - t);
+      ctx.lineTo(w * x - t * 0.32, h * y);
+      ctx.lineTo(w * x + t * 0.32, h * y);
+      ctx.fill();
+    });
+    ctx.fillStyle = '#c9cfdc';
     ctx.beginPath();
-    ctx.moveTo(0, h * 0.82);
-    ctx.quadraticCurveTo(w * 0.3, h * 0.7, w * 0.6, h * 0.8);
-    ctx.quadraticCurveTo(w * 0.8, h * 0.86, w, h * 0.76);
+    ctx.moveTo(0, h * 0.86);
+    ctx.quadraticCurveTo(w * 0.4, h * 0.8, w, h * 0.85);
     ctx.lineTo(w, h);
     ctx.lineTo(0, h);
     ctx.fill();
-    // sapins
-    ctx.fillStyle = '#5f6e5b';
-    [[0.15, 0.78], [0.24, 0.8], [0.78, 0.78]].forEach(([x, y]) => {
-      ctx.beginPath();
-      ctx.moveTo(w * x, h * y - 40);
-      ctx.lineTo(w * x - 16, h * y);
-      ctx.lineTo(w * x + 16, h * y);
-      ctx.fill();
-    });
-    // lune + étoiles
-    ctx.fillStyle = '#fff3dc';
-    ctx.beginPath();
-    ctx.arc(w * 0.72, h * 0.18, 18, 0, Math.PI * 2);
-    ctx.fill();
+    // fenêtre éclairée d'une maison voisine
+    ctx.fillStyle = 'rgba(255,190,110,0.85)';
+    ctx.fillRect(w * 0.6, h * 0.74, 10, 8);
+    ctx.filter = 'blur(1px)';
     const r = rng(11);
-    for (let i = 0; i < 40; i++) {
-      ctx.globalAlpha = 0.4 + r() * 0.6;
-      ctx.fillRect(r() * w, r() * h * 0.5, 2, 2);
+    for (let i = 0; i < 90; i++) {
+      ctx.globalAlpha = 0.25 + r() * 0.6;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(r() * w, r() * h, 0.8 + r() * 2.2, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.globalAlpha = 1;
+    ctx.filter = 'none';
   });
 }
 

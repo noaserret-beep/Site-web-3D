@@ -292,10 +292,13 @@ async function boot() {
     try {
       const [{ World }, { Studio }] = await Promise.all([import('./scene/world.js'), import('./scene/studio.js')]);
       setLoad(0.4);
+      const { manager, tissusPrets } = await import('./scene/realisme.js');
+      manager.onProgress = (url, loaded, total) => setLoad(0.4 + 0.5 * (loaded / Math.max(1, total)));
       world = new World($('#scene'), { reducedMotion, lite });
-      setLoad(0.65);
       studio = new Studio();
       setStudio(studio);
+      // on attend les meubles et les tissus avant d'ouvrir la porte
+      await Promise.all([world.ready, tissusPrets()]);
     } catch (e) {
       console.warn('3D indisponible :', e);
       world = null;
@@ -308,7 +311,7 @@ async function boot() {
   // vignettes produits (rendu 3D ou photos)
   await new Promise((r) => setTimeout(r, 20));
   fillThumbs();
-  setLoad(0.9);
+  setLoad(0.95);
 
   initQuickView({ studio, onToggle: (open) => world && (world.paused = open) });
   initCart({ quickView: ouvrirProduit });
