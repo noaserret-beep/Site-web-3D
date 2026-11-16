@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Maison Mellow · Chaussons et bandeaux bouillottes</title>
+  <meta name="description" content="Maison Mellow : chaussons bouillotte, bandeau bouillotte multifonction (règles, digestion, lombaires) et bouillotte nuque. Cocooning, confort et bien-être, à la maison." />
+  <meta name="theme-color" content="#f7ede1" />
+  <meta property="og:title" content="Maison Mellow · Cocooning, confort, bien-être" />
+  <meta property="og:description" content="Visitez la maison Maison Mellow et découvrez nos chaussons et bandeaux bouillottes." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/logo-maison-mellow.png" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,100;1,9..144,300..700,100&family=Jost:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.min.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#boutique">Aller directement à la boutique</a>
+
+  <!-- Écran de chargement -->
+  <div class="loader" id="loader" aria-hidden="true">
+    <img class="loader__logo" src="assets/monogramme.png" alt="" width="180" height="103" />
+    <p class="loader__text">On allume le feu…</p>
+    <div class="loader__bar"><span id="loaderBar"></span></div>
+  </div>
+
+  <!-- Scène 3D (fond fixe) -->
+  <canvas id="scene" class="scene" aria-hidden="true"></canvas>
+  <div class="scene-fallback" aria-hidden="true"><img src="assets/logo-maison-mellow.png" alt="" /></div>
+  <div class="hotspots" id="hotspots"></div>
+
+  <!-- En-tête -->
+  <header class="header" id="header">
+    <a class="brand" href="#accueil" aria-label="Maison Mellow, retour à l'accueil">
+      <img src="assets/monogramme.png" alt="" width="44" height="25" />
+      <span>Maison Mellow</span>
+    </a>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#piece-entree">La visite</a>
+      <a href="#boutique">Boutique</a>
+      <a href="#piece-grenier">Coffrets</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="header__actions">
+      <a class="shortcut" href="#boutique">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h12M13 6l6 6-6 6" /></svg>
+        Raccourci boutique
+      </a>
+      <button class="cart-btn" id="cartBtn" type="button" aria-label="Ouvrir le panier">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1 12H7L6 8Z" /><path d="M9 8a3 3 0 0 1 6 0" /></svg>
+        <span class="cart-count" id="cartCount">0</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Repère mobile -->
+  <div class="progress-mobile" id="progressMobile" aria-hidden="true">
+    <span class="progress-mobile__label" id="progressLabel">L'Entrée</span>
+    <span class="progress-mobile__dots" id="progressDots"></span>
+  </div>
+
+  <main id="main">
+    <!-- Accueil -->
+    <section class="hero" id="accueil" data-view="0">
+      <div class="hero__content reveal">
+        <p class="eyebrow">Cocooning · Confort · Bien-être</p>
+        <h1>La chaleur douce,<br /><em>à la maison.</em></h1>
+        <p class="lead">Chaussons et bandeaux bouillottes pour les pieds froids, les règles, la digestion et les petites tensions. Entrez, on vous fait visiter.</p>
+        <div class="hero__ctas">
+          <a class="btn btn--primary" href="#piece-entree">
+            Commencer la visite
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          </a>
+          <a class="btn btn--ghost" href="#boutique">Raccourci : la boutique</a>
+        </div>
+        <ul class="hero__chips">
+          <li>Sans fil, sans prise</li>
+          <li>Housses lavables</li>
+          <li id="heroShipping">Livraison offerte dès 49 €</li>
+        </ul>
+      </div>
+      <div class="scroll-hint" aria-hidden="true">
+        <span class="scroll-hint__mouse"><span></span></span>
+        Faites défiler pour ouvrir la maison
+      </div>
+    </section>
+
+    <!-- Les pièces de la maison (générées depuis js/data/catalogue.js) -->
+    <div id="visite"></div>
+
+    <!-- Fin de la visite -->
+    <section class="fin" id="fin-visite" data-view="7">
+      <div class="fin__card reveal">
+        <p class="eyebrow">Fin de la visite</p>
+        <h2>Vous avez fait le tour de la maison&nbsp;!</h2>
+        <p>Six pièces, une seule idée : la chaleur douce, au bon endroit, au bon moment.</p>
+        <div class="fin__recap" id="finRecap"></div>
+        <a class="btn btn--primary" href="#boutique">Voir toute la boutique</a>
+      </div>
+    </section>
+
+    <!-- Boutique -->
+    <div class="sheet" id="sheet">
+      <section class="boutique" id="boutique" aria-labelledby="boutiqueTitre">
+        <div class="section-head">
+          <p class="eyebrow">La boutique</p>
+          <h2 id="boutiqueTitre">Toute la maison, en un coup d'œil</h2>
+          <p class="section-head__sub">Filtrez selon votre besoin, ou tournez les produits en 3D pour les voir sous toutes les coutures.</p>
+        </div>
+        <div class="filters" id="filters" role="toolbar" aria-label="Filtrer les produits"></div>
+        <div class="grid" id="grid"></div>
+      </section>
+
+      <section class="engagements" aria-label="Nos engagements">
+        <div class="engagement">
+          <span class="engagement__icon"><svg viewBox="0 0 24 24"><path d="M12 3c2 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-8Z" /></svg></span>
+          <h3>Chaleur naturelle</h3>
+          <p>Une chaleur douce et enveloppante, sans fil ni prise.</p>
+        </div>
+        <div class="engagement">
+          <span class="engagement__icon"><svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="17.5" r="1.6" /><circle cx="17" cy="17.5" r="1.6" /></svg></span>
+          <h3 id="engShip">Livraison offerte dès 49 €</h3>
+          <p>Préparée avec soin et expédiée rapidement.</p>
+        </div>
+        <div class="engagement">
+          <span class="engagement__icon"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4" /></svg></span>
+          <h3>Satisfait ou remboursé</h3>
+          <p>30 jours pour changer d'avis, sans souci.</p>
+        </div>
+        <div class="engagement">
+          <span class="engagement__icon"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg></span>
+          <h3>Paiement sécurisé</h3>
+          <p>Carte bancaire et moyens de paiement habituels.</p>
+        </div>
+      </section>
+
+      <section class="faq" id="faq" aria-labelledby="faqTitre">
+        <div class="section-head">
+          <p class="eyebrow">Questions fréquentes</p>
+          <h2 id="faqTitre">Tout savoir avant de se lover dedans</h2>
+        </div>
+        <div class="faq__list" id="faqList"></div>
+      </section>
+
+      <section class="club" aria-labelledby="clubTitre">
+        <div class="club__inner">
+          <img src="assets/monogramme-creme.png" alt="" class="club__logo" width="120" height="69" />
+          <h2 id="clubTitre">Rejoignez le Club Cocon</h2>
+          <p>Nouveautés, rituels bien-être et petites attentions : une lettre douce, de temps en temps.</p>
+          <form class="club__form" id="clubForm">
+            <label class="sr-only" for="clubEmail">Votre adresse email</label>
+            <input id="clubEmail" type="email" required placeholder="votre@email.fr" autocomplete="email" />
+            <button class="btn btn--light" type="submit">Je m'inscris</button>
+          </form>
+          <p class="club__ok" id="clubOk" hidden>Merci ! Bienvenue au Club Cocon.</p>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer__brand">
+          <img src="assets/logo-maison-mellow.png" alt="Maison Mellow, Cocooning, Confort, Bien-être" width="220" height="131" />
+        </div>
+        <div class="footer__cols">
+          <div>
+            <h3>La maison</h3>
+            <a href="#piece-salon">Le Salon</a>
+            <a href="#piece-cuisine">La Cuisine</a>
+            <a href="#piece-chambre">La Chambre</a>
+            <a href="#piece-lecture">Le Coin lecture</a>
+            <a href="#piece-grenier">Le Grenier à cadeaux</a>
+          </div>
+          <div>
+            <h3>Aide</h3>
+            <a href="#faq">FAQ</a>
+            <a href="#" id="footerMail">Nous écrire</a>
+            <a href="#">Livraison et retours</a>
+          </div>
+          <div>
+            <h3>Informations</h3>
+            <a href="#">Mentions légales</a>
+            <a href="#">Conditions générales de vente</a>
+            <a href="#">Confidentialité</a>
+          </div>
+        </div>
+        <p class="footer__copy">© <span id="year"></span> Maison Mellow · Cocooning, Confort, Bien-être</p>
+      </footer>
+    </div>
+  </main>
+
+  <!-- Plan de la maison + thermomètre -->
+  <aside class="plan" id="plan" aria-label="Plan de la maison">
+    <div class="plan__head">
+      <span>Plan de la maison</span>
+      <span class="plan__temp" id="planTemp">19°</span>
+    </div>
+    <div class="plan__body">
+      <svg class="plan__svg" id="planSvg" viewBox="0 0 160 122" role="img" aria-label="Plan de la maison"></svg>
+      <div class="thermo" aria-hidden="true"><span id="thermoFill"></span></div>
+    </div>
+    <p class="plan__here">Vous êtes ici : <strong id="planHere">Dehors</strong></p>
+  </aside>
+
+  <!-- Panier -->
+  <div class="drawer" id="cart" hidden>
+    <div class="drawer__backdrop" data-close></div>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+      <div class="drawer__head">
+        <h2 id="cartTitle">Votre panier</h2>
+        <button class="icon-btn" data-close type="button" aria-label="Fermer le panier">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </div>
+      <div class="ship" id="ship">
+        <p id="shipText"></p>
+        <div class="ship__bar"><span id="shipBar"></span></div>
+      </div>
+      <ul class="cart__items" id="cartItems"></ul>
+      <div class="cart__empty" id="cartEmpty">
+        <p>Votre panier est encore tout froid…</p>
+        <a class="btn btn--ghost" href="#piece-entree" data-close>Visiter la maison</a>
+      </div>
+      <div class="cart__cross" id="cartCross"></div>
+      <div class="drawer__foot">
+        <div class="totals">
+          <p><span>Sous-total</span><span id="subTotal">0 €</span></p>
+          <p><span>Livraison</span><span id="shipCost">-</span></p>
+          <p class="totals__grand"><span>Total</span><span id="grandTotal">0 €</span></p>
+        </div>
+        <button class="btn btn--primary btn--block" id="checkoutBtn" type="button">Commander</button>
+        <p class="secure">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+          Paiement 100 % sécurisé
+        </p>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Fiche produit rapide -->
+  <div class="modal" id="qv" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__card qv" role="dialog" aria-modal="true" aria-labelledby="qvTitle">
+      <button class="icon-btn modal__close" data-close type="button" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+      <div class="qv__stage" id="qvStage">
+        <img class="qv__photo" id="qvPhoto" alt="" hidden />
+        <span class="qv__hint" id="qvHint">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4" /></svg>
+          Glissez pour tourner en 3D
+        </span>
+      </div>
+      <div class="qv__info" id="qvInfo"></div>
+    </div>
+  </div>
+
+  <!-- Commande (avant branchement du paiement) -->
+  <div class="modal" id="order" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__card order" role="dialog" aria-modal="true" aria-labelledby="orderTitle">
+      <button class="icon-btn modal__close" data-close type="button" aria-label="Fermer">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+      <img src="assets/monogramme.png" alt="" width="90" height="52" />
+      <h2 id="orderTitle">On prépare votre cocon</h2>
+      <p>Le paiement en ligne ouvre très bientôt. En attendant, envoyez-nous votre commande par email : on vous répond vite pour la confirmer.</p>
+      <div class="order__recap" id="orderRecap"></div>
+      <a class="btn btn--primary btn--block" id="orderMail" href="#">Envoyer ma commande par email</a>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <noscript><p class="noscript">Activez JavaScript pour visiter la maison Maison Mellow.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
