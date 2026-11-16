@@ -275,7 +275,7 @@ export class World {
     hole.absarc(9, 13.9, 1.05, 0, Math.PI * 2, true);
     gable.holes.push(hole);
     const gGeo = new THREE.ExtrudeGeometry(gable, { depth: 0.3, bevelEnabled: false });
-    const gMesh = M.mesh(gGeo, pbr('plank_flooring_02', { repeat: [0.28, 0.28], color: '#f0dcc2', rotation: Math.PI / 2 }));
+    const gMesh = M.mesh(gGeo, pbr('plank_flooring_02', { repeat: [0.28, 0.28], color: '#e9d3b8', diffuse: false, rotation: Math.PI / 2 }));
     gMesh.position.z = BACK - 0.3;
     H.add(gMesh);
     const rw = M.mesh(new THREE.CircleGeometry(1.05, 40), new THREE.MeshBasicMaterial({ map: T.windowView() }), { cast: false });
@@ -292,7 +292,7 @@ export class World {
     const over = 1.5;
     const len0 = (13.5 + over) / Math.cos(ALPHA);
     const roofMat = pbr('clay_roof_tiles', { repeat: [len0 / 2.6, 9.4 / 2.6], color: '#d9b3a0' });
-    const under = pbr('plank_flooring_02', { repeat: [len0 / 4, 2], color: '#e2c4a0' });
+    const under = pbr('plank_flooring_02', { repeat: [len0 / 4, 2], color: '#bfa58a', diffuse: false });
     const hx = 13.5 + over;
     const len = hx / Math.cos(ALPHA);
     [-1, 1].forEach((side) => {
@@ -691,7 +691,7 @@ export class World {
     P('vintage_oil_lamp', 18.05, F1 + 1.24, -0.75, { s: 1.4 });
     this._bulb(18.05, F1 + 1.85, -0.75, 0.5);
     P('alarm_clock_01', 18.5, F1 + 1.24, -0.4, { ry: -0.4, ligne: 'Le réveil peut attendre : encore cinq minutes au chaud.' });
-    P('hanging_picture_frame_01', 20.7, F1 + 3.3, BACK + 0.02, { s: 2.2 });
+    add(M.frame(2, 1.1, 1.35), 20.7, F1 + 3.2, BACK + 0.06);
     P('wicker_basket_02', 19.7, F1, 0.4, { s: 2.2 });
     P('potted_plant_02', 22.0, F1, 0.6, { s: 1.7, ligne: plante });
     add(M.rug(3.2, 2.4, ['#f0d6cc', '#e6b9ad', '#fbf4ea']), 19.4, F1, 1.7);

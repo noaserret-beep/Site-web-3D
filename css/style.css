@@ -181,6 +181,9 @@ em { font-style: italic; color: var(--terracotta); }
   height: var(--header-h);
   display: flex; align-items: center; justify-content: space-between; gap: 20px;
   padding: 0 clamp(16px, 3vw, 40px);
+  background: rgba(247, 237, 225, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   transition: background 0.4s, box-shadow 0.4s, transform 0.5s var(--ease);
 }
 .header.is-solid { background: rgba(247, 237, 225, 0.82); backdrop-filter: blur(14px); box-shadow: 0 1px 0 var(--line); }
