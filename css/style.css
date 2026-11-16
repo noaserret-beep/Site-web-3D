@@ -136,7 +136,7 @@ em { font-style: italic; color: var(--terracotta); }
 }
 .no-webgl .scene-fallback img { width: min(440px, 60vw); opacity: 0.35; margin-left: 30vw; }
 
-.hotspots { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+.hotspots { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
 .hotspot {
   position: absolute; left: 0; top: 0;
   display: flex; align-items: center; gap: 10px;
@@ -222,7 +222,9 @@ em { font-style: italic; color: var(--terracotta); }
 .cart-count:empty, .cart-count[data-n='0'] { display: none; }
 
 /* ------------------------------ Accueil ------------------------------ */
-main { position: relative; z-index: 2; }
+/* le contenu laisse passer les clics vers la scène 3D, sauf sur les cartes */
+main { position: relative; z-index: 2; pointer-events: none; }
+.hero__content, .scroll-hint, .piece__panel, .fin__card, .sheet { pointer-events: auto; }
 .hero {
   min-height: 100vh; min-height: 100svh;
   display: flex; flex-direction: column; justify-content: center;
@@ -596,9 +598,11 @@ main { position: relative; z-index: 2; }
   .cart-btn { width: 46px; height: 46px; }
   .hero { justify-content: flex-end; padding-bottom: 96px; }
   .hero__content { padding: 22px 20px; border-radius: 26px; background: var(--glass); backdrop-filter: blur(14px); box-shadow: var(--shadow); }
-  .hero h1 { font-size: clamp(2.2rem, 10vw, 3rem); }
-  .lead { font-size: 1.02rem; }
-  .hero__ctas { margin: 22px 0 18px; }
+  .hero h1 { font-size: clamp(2rem, 8.6vw, 2.6rem); margin-bottom: 12px; }
+  .hero .eyebrow { letter-spacing: 0.14em; font-size: 0.7rem; margin-bottom: 10px; }
+  .lead { font-size: 0.98rem; }
+  .hero__ctas { margin: 16px 0 0; gap: 8px; }
+  .hero__chips { display: none; }
   .hero__ctas .btn { flex: 1 1 auto; padding: 14px 18px; }
   .scroll-hint { display: none; }
   .piece { min-height: 170vh; padding: 50vh 12px 0; }
