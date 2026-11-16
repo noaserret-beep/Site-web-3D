@@ -34,6 +34,7 @@
   <canvas id="scene" class="scene" aria-hidden="true"></canvas>
   <div class="scene-fallback" aria-hidden="true"><img src="assets/logo-maison-mellow.png" alt="" /></div>
   <div class="hotspots" id="hotspots"></div>
+  <div class="bubble" id="bubble" role="status" hidden></div>
 
   <!-- En-tête -->
   <header class="header" id="header">
@@ -42,7 +43,7 @@
       <span>Maison Mellow</span>
     </a>
     <nav class="nav" aria-label="Navigation principale">
-      <a href="#piece-entree">La visite</a>
+      <a href="#porte">La visite</a>
       <a href="#boutique">Boutique</a>
       <a href="#piece-grenier">Coffrets</a>
       <a href="#faq">FAQ</a>
@@ -71,11 +72,11 @@
       <div class="hero__content reveal">
         <p class="eyebrow">Cocooning · Confort · Bien-être</p>
         <h1>La chaleur douce,<br /><em>à la maison.</em></h1>
-        <p class="lead">Chaussons et bandeaux bouillottes pour les pieds froids, les règles, la digestion et les petites tensions. Entrez, on vous fait visiter.</p>
+        <p class="lead">Chaussons et bandeaux bouillottes pour les pieds froids, les règles, la digestion et les petites tensions. Entrez, la maison est à vous.</p>
         <div class="hero__ctas">
-          <a class="btn btn--primary" href="#piece-entree">
-            Commencer la visite
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          <a class="btn btn--primary" href="#porte">
+            Entrer dans la maison
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
           </a>
           <a class="btn btn--ghost" href="#boutique">Raccourci : la boutique</a>
         </div>
@@ -87,7 +88,7 @@
       </div>
       <div class="scroll-hint" aria-hidden="true">
         <span class="scroll-hint__mouse"><span></span></span>
-        Faites défiler pour ouvrir la maison
+        Cliquez ou faites défiler pour entrer
       </div>
     </section>
 
@@ -223,7 +224,7 @@
       <ul class="cart__items" id="cartItems"></ul>
       <div class="cart__empty" id="cartEmpty">
         <p>Votre panier est encore tout froid…</p>
-        <a class="btn btn--ghost" href="#piece-entree" data-close>Visiter la maison</a>
+        <a class="btn btn--ghost" href="#porte" data-close>Visiter la maison</a>
       </div>
       <div class="cart__cross" id="cartCross"></div>
       <div class="drawer__foot">

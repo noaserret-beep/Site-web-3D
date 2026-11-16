@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import * as M from './models.js';
 import * as T from './textures.js';
+import { ETAPES, VUES, DERNIERE } from './parcours.js';
 
 const { box, mats } = M;
 
@@ -19,29 +20,7 @@ const PEAK = 17.3;
 const SLOPE = (PEAK - LEVEL[2]) / 13.5;
 const ALPHA = Math.atan(SLOPE);
 
-// Points de vue de la caméra (0 = extérieur, 1..6 = pièces, 7 = maison ouverte)
-const VIEWS = [
-  { pos: [9, 8.2, 47], target: [9, 7.2, 0], shift: 0.75 },
-  { pos: [1.4, 3.7, 14.5], target: [0.4, 2.0, -0.6], shift: 1 },     // Entrée
-  { pos: [9.8, 3.7, 14.5], target: [9.2, 1.9, -0.6], shift: 1 },     // Salon
-  { pos: [18.4, 3.8, 14.5], target: [17.8, 2.0, -0.6], shift: 1 },   // Cuisine
-  { pos: [17.6, 9.2, 14.5], target: [17.2, 7.3, -0.6], shift: 1 },   // Chambre
-  { pos: [8.8, 9.2, 14.5], target: [8.8, 7.3, -0.6], shift: 1 },     // Coin lecture
-  { pos: [9, 14.6, 14.5], target: [9, 12.7, -0.8], shift: 1 },       // Grenier
-  { pos: [9, 9.4, 50], target: [9, 7.6, 0], shift: 0 },              // Maison ouverte
-];
-
-// Position de la lumière d'ambiance pour chaque vue
-const ROOM_LIGHTS = [
-  [0.8, 2.8, 6],
-  [0.4, 3.6, 1.8],
-  [9.8, 2.2, -1.2],
-  [17.6, 3.8, 1.2],
-  [16.8, 9.2, 1.4],
-  [8.6, 9.0, 1.4],
-  [9, 14.2, 1.0],
-  [9, 8, 8],
-];
+const UP = new THREE.Vector3(0, 1, 0);
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const smooth = (a, b, x) => {
@@ -60,6 +39,9 @@ export class World {
     this.pointerSmooth = new THREE.Vector2();
     this.time = 0;
     this.hotspots = [];
+    this.clickables = [];
+    this.hovered = null;
+    this.ray = new THREE.Raycaster();
     this.flickers = [];
     this.steams = [];
     this.paused = false;
@@ -88,6 +70,7 @@ export class World {
     this._rooms();
     this._path();
     this._particles();
+    this._buildParcours();
 
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -145,7 +128,7 @@ export class World {
     fill.position.set(30, 10, 12);
     s.add(fill);
     this.roomLight = new THREE.PointLight('#ffb36b', 22, 14, 1.6);
-    this.roomLight.position.set(...ROOM_LIGHTS[0]);
+    this.roomLight.position.set(0.8, 2.8, 6);
     s.add(this.roomLight);
     this.cursorLight = new THREE.PointLight('#ffc98f', 0, 7, 2);
     s.add(this.cursorLight);
@@ -172,9 +155,9 @@ export class World {
     };
     slabAt(LEFT, 17.7, BACK, FRONT, 5.2);
     slabAt(17.7, RIGHT, -1.25, FRONT, 5.2);
-    slabAt(LEFT, 5.05, BACK, FRONT, 10.6);
-    slabAt(6.15, RIGHT, BACK, FRONT, 10.6);
-    slabAt(5.05, 6.15, -2.25, FRONT, 10.6);
+    slabAt(LEFT, 4.6, BACK, FRONT, 10.6);
+    slabAt(6.8, RIGHT, BACK, FRONT, 10.6);
+    slabAt(4.6, 6.8, -0.9, FRONT, 10.6);
     // bandeaux bois sur la tranche avant (effet "maison de poupée")
     [5.2, 10.6].forEach((y) => H.add(box(27.2, 0.42, 0.12, 0.03, trim, 9, y, FRONT + 0.04)));
 
@@ -197,9 +180,12 @@ export class World {
     floor(4.5, 13.5, BACK, FRONT, LEVEL[1], oak);
     floor(13.5, 17.7, BACK, FRONT, LEVEL[1], oakDark);
     floor(17.7, RIGHT, -1.25, FRONT, LEVEL[1], oakDark);
-    floor(LEFT, 5.05, BACK, FRONT, LEVEL[2], oak);
-    floor(6.15, RIGHT, BACK, FRONT, LEVEL[2], oak);
-    floor(5.05, 6.15, -2.25, FRONT, LEVEL[2], oak);
+    floor(LEFT, 4.6, BACK, FRONT, LEVEL[2], oak);
+    floor(6.8, RIGHT, BACK, FRONT, LEVEL[2], oak);
+    floor(4.6, 6.8, -0.9, FRONT, LEVEL[2], oak);
+    // garde-corps autour de la trappe du grenier
+    this.house.add(box(2.3, 0.07, 0.07, 0.02, mats.wood('#8a5a36'), 5.7, LEVEL[2] + 1.0, -0.85));
+    [4.65, 5.7, 6.75].forEach((x) => this.house.add(box(0.05, 1.0, 0.05, 0.01, mats.wood('#8a5a36'), x, LEVEL[2] + 0.5, -0.85)));
 
     // Murs du fond (papier peint différent par pièce)
     const papers = [
@@ -386,20 +372,31 @@ export class World {
         door.lineTo(dw / 2, 0);
         door.closePath();
         const dGeo = new THREE.ExtrudeGeometry(door, { depth: 0.12, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 2 });
-        const d = M.mesh(dGeo, doorM);
-        d.position.set(dx, 0, Z0 + 0.12);
-        content.add(d);
-        // couronne de l'avent
+        dGeo.translate(dw / 2, 0, -0.06);
+        // la porte pivote sur ses gonds (côté gauche) et s'ouvre devant le visiteur
+        const hinge = new THREE.Group();
+        hinge.position.set(dx - dw / 2, 0, Z0 + 0.18);
+        content.add(hinge);
+        this.door = hinge;
+        hinge.add(M.mesh(dGeo, doorM));
         const wreath = M.mesh(new THREE.TorusGeometry(0.34, 0.11, 10, 28), greenM);
-        wreath.position.set(dx, 2.0, Z0 + 0.36);
-        content.add(wreath);
+        wreath.position.set(dw / 2, 2.0, 0.18);
+        hinge.add(wreath);
         const bow = M.mesh(new THREE.SphereGeometry(0.09, 10, 8), trimM);
-        bow.position.set(dx, 1.68, Z0 + 0.42);
-        content.add(bow);
+        bow.position.set(dw / 2, 1.68, 0.24);
+        hinge.add(bow);
         const knob = M.mesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshStandardMaterial({ color: '#d9a85b', metalness: 0.6, roughness: 0.3, transparent: true }));
         this.facadeMats.push(knob.material);
-        knob.position.set(dx + 0.6, 1.4, Z0 + 0.32);
-        content.add(knob);
+        knob.position.set(dw / 2 + 0.6, 1.4, 0.14);
+        hinge.add(knob);
+        const knobIn = knob.clone();
+        knobIn.position.z = -0.14;
+        hinge.add(knobIn);
+        // lumière chaude qui s'échappe quand la porte s'ouvre
+        const spill = M.glowSprite('#ffb866', 4.2, 0);
+        spill.position.set(dx, 1.7, Z0 - 0.4);
+        content.add(spill);
+        this.doorGlow = spill;
         // enseigne Maison Mellow
         const sign = new THREE.Group();
         sign.add(box(1.9, 1.05, 0.1, 0.08, trimM));
@@ -425,6 +422,10 @@ export class World {
       content.add(box(x1 - x0, 0.3, 0.12, 0.04, trimM, (x0 + x1) / 2, 5.2, Z0 + DEPTH + 0.04));
       content.add(box(x1 - x0, 0.3, 0.12, 0.04, trimM, (x0 + x1) / 2, 10.6, Z0 + DEPTH + 0.04));
       content.add(box(0.36, 10.8, 0.14, 0.04, trimM, side < 0 ? x0 + 0.18 : x1 - 0.18, 5.4, Z0 + DEPTH + 0.05));
+      // la façade ne fait pas d'ombre dans la maison : l'intérieur reste lumineux
+      pivot.traverse((o) => {
+        if (o.isMesh) o.castShadow = false;
+      });
       this.scene.add(pivot);
       this.facade.push({ pivot, side });
     });
@@ -486,8 +487,32 @@ export class World {
     if (productId) {
       const anchor = new THREE.Vector3(x, y + hotspotY * scale, z);
       this.hotspots.push({ productId, view, anchor, el: null });
+      this._clickable(p, { kind: 'product', productId, view });
     }
     return p;
+  }
+
+  // Objets que l'on peut toucher dans la maison
+  _clickable(obj, data) {
+    obj.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(obj);
+    const entry = {
+      ...data,
+      obj,
+      center: bb.getCenter(new THREE.Vector3()),
+      top: new THREE.Vector3((bb.min.x + bb.max.x) / 2, bb.max.y, (bb.min.z + bb.max.z) / 2),
+      baseY: obj.position.y,
+      baseScale: obj.scale.x,
+      hover: 0,
+      bounce: 0,
+    };
+    obj.userData.clickable = entry;
+    this.clickables.push(entry);
+    return entry;
+  }
+
+  _toy(obj, ligne, productId) {
+    return this._clickable(obj, { kind: 'toy', ligne, productId });
   }
 
   _steam(x, y, z, opts) {
@@ -511,37 +536,38 @@ export class World {
     const F2 = LEVEL[2];
 
     /* ENTRÉE */
-    add(M.coatRack(), -1.6, G, BACK);
+    this._toy(add(M.coatRack(), -1.6, G, BACK), 'Laissez votre manteau ici, on vous prête des chaussons tout chauds.', 'chaussons-nuage');
     add(M.bench('#a3ad8f'), -1.6, G, -2.7);
     add(M.doormat('Bienvenue'), 0.8, G, 2.5);
-    add(M.plant(1.1), 3.4, G, -2.6);
+    this._toy(add(M.plant(1.1), 3.4, G, -2.6), 'Même les plantes aiment la chaleur douce de la maison.');
     add(M.rug(2.4, 4.2, ['#e6c9a8', '#c48a5a', '#f4e8d8']), 0.8, G, 0.6);
     const sign1 = M.mesh(new THREE.PlaneGeometry(1.7, 0.53), new THREE.MeshStandardMaterial({ map: T.signTexture('Salon'), roughness: 0.8 }));
     sign1.position.set(3.4, 3.9, 0.6);
     S.add(sign1);
     S.add(box(0.04, 0.9, 0.04, 0.01, mats.matte('#5a3a1e'), 3.4, 4.6, 0.6));
     add(M.frame(1, 1.0, 1.25), 1.6, G + 3.0, BACK + 0.05);
-    this._prop('chaussons', '#c48a5a', 'chaussons-nuage', 1, -1.6, G + 1.0, -2.6, { ry: 0.2, scale: 0.75, hotspotY: 0.9 });
+    this._prop('chaussons', '#c48a5a', 'chaussons-nuage', VUES.entree, -1.6, G + 1.0, -2.6, { ry: 0.2, scale: 0.75, hotspotY: 0.9 });
     const ceilLamp1 = M.pendant('#c48a5a');
     add(ceilLamp1, 0.4, G + 3.4, 0.2);
 
     /* SALON */
     const fp = add(M.fireplace(), 10.2, G, BACK + 0.35);
+    this._toy(fp, 'Rien ne vaut un feu qui crépite… à part des pieds bien au chaud.', 'chaussons-nuage');
     this.flickers.push({ fire: fp.userData.flames, glow: fp.userData.glow });
     fp.traverse((o) => o.userData.flicker && this.flickers.push({ glow: o.userData.flicker }));
     add(M.rug(5.2, 3.6), 9.6, G, 0.7);
-    add(M.armchair('#c48a5a'), 6.6, G, -0.2, 0.55);
+    this._toy(add(M.armchair('#c48a5a'), 6.6, G, -0.2, 0.55), 'Le fauteuil préféré de la maison. Avec un plaid, il est imbattable.', 'chaussons-nuage');
     const pl = M.plaid('#e6b9ad');
     pl.position.set(6.0, 1.45, -0.55);
     pl.rotation.set(-0.3, 0.55, 0.15);
     S.add(pl);
     add(M.sideTable(), 5.4, G, 1.8);
-    add(M.mug('#bf6b47'), 5.35, G + 0.94, 1.75);
+    this._toy(add(M.mug('#bf6b47'), 5.35, G + 0.94, 1.75), 'Un chocolat chaud ? La chaleur commence de l\'intérieur.', 'coffret-soiree-cocon');
     this._steam(5.35, G + 1.25, 1.75, { count: 6, size: 0.35, height: 1.0 });
     add(M.floorLamp(), 12.6, G, -2.3);
     add(M.plant(1.25, '#efe2cf'), 12.7, G, 1.9);
     add(M.frame(0, 1.2, 1.5), 6.6, G + 3.2, BACK + 0.05);
-    this._prop('chaussons', '#efe2cf', 'chaussons-nuage', 2, 9.6, G + 0.04, 1.2, { ry: -0.35, scale: 1.25, hotspotY: 0.75 });
+    this._prop('chaussons', '#efe2cf', 'chaussons-nuage', VUES.salon, 9.6, G + 0.04, 1.2, { ry: -0.35, scale: 1.25, hotspotY: 0.75 });
     this._steam(9.6, G + 0.6, 1.2, { count: 7, size: 0.45, height: 1.2, color: '#ffd9a8', warm: true });
 
     /* CUISINE */
@@ -550,16 +576,16 @@ export class World {
     add(M.roundTable(), 17.4, G, 1.0);
     add(M.chair('#bf6b47'), 15.9, G, 1.3, Math.PI / 2 + 0.2);
     add(M.chair('#a3ad8f'), 18.9, G, 1.4, -Math.PI / 2 - 0.2);
-    add(M.teapot('#a3ad8f'), 17.0, G + 1.4, 0.7);
+    this._toy(add(M.teapot('#a3ad8f'), 17.0, G + 1.4, 0.7), 'Une infusion après le repas et un peu de chaleur sur le ventre : la digestion en douceur.', 'bandeau-cocon');
     this._steam(17.36, G + 2.0, 0.7, { count: 5, size: 0.3, height: 0.9 });
     add(M.mug('#efe2cf'), 17.9, G + 1.4, 1.5, 0.6);
-    this._prop('bandeau', '#d99a8a', 'bandeau-cocon', 3, 17.75, G + 1.41, 1.15, { ry: 0.5, scale: 0.95, hotspotY: 0.6 });
-    this._prop('housse', '#efe2cf', 'housse-rechange', 3, 15.85, G + 1.02, 1.3, { ry: 1.2, scale: 0.55, hotspotY: 0.6 });
-    add(M.pendant('#bf6b47'), 17.4, G + 3.5, 1.0);
+    this._prop('bandeau', '#d99a8a', 'bandeau-cocon', VUES.cuisine, 17.75, G + 1.41, 1.15, { ry: 0.5, scale: 0.95, hotspotY: 0.6 });
+    this._prop('housse', '#efe2cf', 'housse-rechange', VUES.cuisine, 15.85, G + 1.02, 1.3, { ry: 1.2, scale: 0.55, hotspotY: 0.6 });
+    add(M.pendant('#bf6b47'), 17.4, G + 3.85, 1.0);
     add(M.plant(0.9, '#bf6b47'), 14.3, G, 2.6);
 
     /* CHAMBRE */
-    add(M.bed('#e6b9ad'), 15.85, F1, -0.75);
+    this._toy(add(M.bed('#e6b9ad'), 15.85, F1, -0.75), 'Glissez le bandeau sur le ventre 20 minutes avant de dormir.', 'bandeau-cocon');
     add(M.nightstand(), 18.4, F1, -0.55);
     const c2 = M.candle(0.25);
     add(c2, 18.62, F1 + 0.9, -0.35);
@@ -570,22 +596,22 @@ export class World {
     // garde-corps de la trémie
     S.add(box(4.8, 0.08, 0.08, 0.02, mats.wood('#8a5a36'), 20.1, F1 + 1.1, -1.2));
     for (let x = 17.9; x <= 22.4; x += 0.5) S.add(box(0.05, 1.1, 0.05, 0.01, mats.wood('#8a5a36'), x, F1 + 0.55, -1.2));
-    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', 4, 15.9, F1 + 1.28, 0.55, { ry: -0.15, scale: 1.05, hotspotY: 0.6 });
+    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.chambre, 15.9, F1 + 1.28, 0.55, { ry: -0.15, scale: 1.05, hotspotY: 0.6 });
     this._steam(15.9, F1 + 1.6, 0.6, { count: 6, size: 0.4, height: 1.0, color: '#ffd9a8', warm: true });
 
     /* COIN LECTURE */
-    add(M.bookshelf(), 11.4, F1, BACK + 0.35);
+    this._toy(add(M.bookshelf(), 11.4, F1, BACK + 0.35), 'Un bon livre, la nuque au chaud, et la soirée est parfaite.', 'nuque-douceur');
     add(M.armchair('#e6b9ad'), 8.2, F1, -0.2, 0.25);
-    add(M.floorLamp('#fbefdc'), 6.4, F1, -1.0);
-    add(M.pouf('#d9a679'), 10.8, F1, 1.4);
+    add(M.floorLamp('#fbefdc'), 9.75, F1, -2.5);
+    this._toy(add(M.pouf('#d9a679'), 10.8, F1, 1.4), 'Le pouf idéal pour poser ses pieds… en chaussons, bien sûr.', 'chaussons-nuage');
     add(M.rug(4.6, 3.2, ['#e8d1ba', '#a3ad8f', '#f4e8d8', '#c98b62']), 8.8, F1, 0.6);
     add(M.ladder(5.7), 5.6, F1, BACK + 0.45);
     add(M.plant(0.9), 12.7, F1, 2.3);
-    this._prop('nuque', '#8f9c7a', 'nuque-douceur', 5, 8.15, F1 + 1.13, 0.3, { ry: 0.25, scale: 1.2, hotspotY: 0.5 });
-    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', 5, 10.8, F1 + 0.66, 1.4, { ry: -0.5, scale: 0.75, hotspotY: 0.6 });
+    this._prop('nuque', '#7a5638', 'nuque-douceur', VUES.lecture, 8.15, F1 + 1.13, 0.3, { ry: 0.25, scale: 1.2, hotspotY: 0.5 });
+    this._prop('bandeau', '#bf6b47', 'bandeau-cocon', VUES.lecture, 10.8, F1 + 0.66, 1.4, { ry: -0.5, scale: 0.75, hotspotY: 0.6 });
 
     /* SALLE DE BAIN (décor) */
-    add(M.bathtub(), -0.6, F1, -2.3);
+    this._toy(add(M.bathtub(), -0.6, F1, -2.3), 'Un bain chaud, puis la bouillotte sur la nuque : le duo parfait.', 'nuque-douceur');
     add(M.mirror(), 2.6, F1 + 3.0, BACK + 0.08);
     add(M.towel('#e6b9ad'), -3.4, F1 + 0.2, BACK + 0.2);
     add(M.plant(0.9, '#efe2cf'), 3.4, F1, 1.8);
@@ -600,13 +626,14 @@ export class World {
     tbl.add(box(2.4, 0.14, 1.6, 0.05, mats.wood('#c49a72'), 0, 0.7, 0));
     [[-1, -0.6], [1, -0.6], [-1, 0.6], [1, 0.6]].forEach(([x, z]) => tbl.add(box(0.12, 0.7, 0.12, 0.03, mats.wood('#c49a72'), x, 0.35, z)));
     add(tbl, 9, F2, 0.4);
-    this._prop('coffret', '#efe2cf', 'coffret-soiree-cocon', 6, 9, F2 + 0.78, 0.4, { ry: -0.15, scale: 1.1, hotspotY: 0.9 });
-    add(M.giftBox(1.0, 0.8, 1.0, '#bf6b47'), 4.6, F2, -0.8, 0.3);
-    add(M.giftBox(0.7, 0.6, 0.7, '#a3ad8f', '#bf6b47'), 4.7, F2 + 0.92, -0.8, -0.2);
-    add(M.giftBox(0.9, 0.5, 0.7, '#e6b9ad'), 5.6, F2, 0.6, 0.6);
-    add(M.giftBox(1.1, 0.9, 0.9, '#efe2cf', '#bf6b47'), 13.4, F2, -0.9, -0.3);
-    add(M.giftBox(0.6, 0.5, 0.6, '#c48a5a'), 13.0, F2 + 1.02, -0.9, 0.4);
-    add(M.fir(2.6, '#7f8f6d'), 13.6, F2, 1.2);
+    this._prop('coffret', '#efe2cf', 'coffret-soiree-cocon', VUES.grenier, 9, F2 + 0.78, 0.4, { ry: -0.15, scale: 1.1, hotspotY: 0.9 });
+    const giftLine = 'Psst… le coffret « Soirée Cocon » fait toujours plaisir.';
+    this._toy(add(M.giftBox(1.0, 0.8, 1.0, '#bf6b47'), 3.4, F2, -1.6, 0.3), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(0.7, 0.6, 0.7, '#a3ad8f', '#bf6b47'), 3.5, F2 + 0.92, -1.6, -0.2), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(0.9, 0.5, 0.7, '#e6b9ad'), 4.2, F2, 1.2, 0.6), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(1.1, 0.9, 0.9, '#efe2cf', '#bf6b47'), 13.4, F2, -0.9, -0.3), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.giftBox(0.6, 0.5, 0.6, '#c48a5a'), 13.0, F2 + 1.02, -0.9, 0.4), giftLine, 'coffret-soiree-cocon');
+    this._toy(add(M.fir(2.6, '#7f8f6d'), 13.6, F2, 1.2), 'Le petit sapin du grenier veille sur les cadeaux.');
     const garland = M.garland([
       new THREE.Vector3(2.4, F2 + 3.0, -1.5),
       new THREE.Vector3(5.5, F2 + 3.6, -1.0),
@@ -635,8 +662,8 @@ export class World {
       [15.2, G, 2.8], [16.2, G, -0.5], [17.0, G, -1.9], [17.6, G + 0.2, -2.45],
       [19.9, 2.95, -2.45], [22.2, F1 + 0.25, -2.45], [22.3, F1, -0.4], [21.0, F1, 0.6],
       [19.2, F1, 2.2], [16.0, F1, 2.4], [13.5, F1, 2.4], [11.6, F1, 2.6], [9.2, F1, 2.3],
-      [7.0, F1, 1.4], [6.0, F1, -1.0], [5.6, F1, -2.3],
-      [5.6, 8.3, -2.35], [5.6, F2 + 0.3, -2.35], [6.2, F2, -1.6], [7.4, F2, 1.6], [9, F2, 2.3],
+      [7.0, F1, 1.4], [6.2, F1, -0.8], [5.7, F1, -2.1],
+      [5.7, 8.3, -2.2], [5.7, F2 + 0.3, -2.2], [6.3, F2, -1.4], [7.4, F2, 1.6], [9, F2, 2.3],
     ].map(([x, y, z]) => new THREE.Vector3(x, y, z));
     const curve = (this.pathCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15));
     const len = curve.getLength();
@@ -675,27 +702,27 @@ export class World {
       this.scene.add(a);
     }
 
-    // paramètre du chemin correspondant à chaque pièce
-    const anchors = [
-      new THREE.Vector3(0.8, -0.45, 12), new THREE.Vector3(0.6, G, 1.6), new THREE.Vector3(9.6, G, 2.4),
-      new THREE.Vector3(16.2, G, -0.5), new THREE.Vector3(19.2, F1, 2.2), new THREE.Vector3(7.0, F1, 1.4),
-      new THREE.Vector3(9, F2, 2.3),
-    ];
-    const samples = 400;
-    this.viewU = anchors.map((a) => {
-      let best = 0;
+    // avancement du chemin pour chaque étape de la visite
+    const samples = 500;
+    const pts2 = [];
+    for (let i = 0; i <= samples; i++) pts2.push(curve.getPointAt(i / samples));
+    let prev = 0;
+    this.viewU = ETAPES.map((e, k) => {
+      if (k === 0) return 0;
+      if (k === ETAPES.length - 1) return 1;
+      const target = new THREE.Vector3(e.pos[0], e.pos[1] - 3.0, e.pos[2] - 0.8);
+      let best = prev;
       let bd = Infinity;
       for (let i = 0; i <= samples; i++) {
-        const d = curve.getPointAt(i / samples).distanceToSquared(a);
+        const d = pts2[i].distanceToSquared(target);
         if (d < bd) {
           bd = d;
           best = i / samples;
         }
       }
-      return best;
+      prev = Math.max(prev, best);
+      return prev;
     });
-    this.viewU[0] = 0;
-    this.viewU.push(1);
     this.dotPale = new THREE.Color('#fff4e4');
     this.dotWarm = new THREE.Color('#f08a3c');
     this.dotHot = new THREE.Color('#ffd27a');
@@ -784,6 +811,14 @@ export class World {
   }
 
   /* ------------------------------ Logique ------------------------------ */
+  _buildParcours() {
+    const P = ETAPES.map((e) => new THREE.Vector3(...e.pos));
+    const L = ETAPES.map((e) => new THREE.Vector3(...e.look));
+    this.camCurve = new THREE.CatmullRomCurve3(P, false, 'centripetal');
+    this.lookCurve = new THREE.CatmullRomCurve3(L, false, 'centripetal');
+    this.lightPts = ETAPES.map((e) => new THREE.Vector3(...e.light));
+  }
+
   resize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -792,7 +827,6 @@ export class World {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.portrait = w / h < 0.9;
-    this.camera.fov = this.portrait ? 44 : 34;
     this.camera.updateProjectionMatrix();
   }
 
@@ -800,92 +834,89 @@ export class World {
     this.pointer.set(x, y);
   }
 
-  _viewState(s) {
-    const n = VIEWS.length - 1;
-    s = clamp(s, 0, n);
-    const i = Math.min(n - 1, Math.floor(s));
-    const f = s - i;
-    const start = i === 0 ? 0.2 : 0.5;
-    const travel = smooth(start, 1, f);
-    return { i, f, travel, eff: i + travel };
-  }
-
   update(s, dt) {
+    const N = DERNIERE;
+    s = clamp(s, 0, N);
     this.s = s;
     this.time += dt;
     const t = this.time;
-    const { i, f, travel, eff } = this._viewState(s);
-    const A = VIEWS[i];
-    const B = VIEWS[i + 1];
+    const i = Math.min(N - 1, Math.floor(s));
+    const f = s - i;
+    // on ralentit doucement à chaque étape, sans jamais s'arrêter
+    const fe = this.reducedMotion ? f : f - (Math.sin(2 * Math.PI * f) / (2 * Math.PI)) * 0.55;
+    const se = i + fe;
+    const A = ETAPES[i];
+    const B = ETAPES[i + 1];
 
-    // caméra
-    const pos = new THREE.Vector3().fromArray(A.pos).lerp(new THREE.Vector3().fromArray(B.pos), travel);
-    const tgt = new THREE.Vector3().fromArray(A.target).lerp(new THREE.Vector3().fromArray(B.target), travel);
-    const dir = pos.clone().sub(tgt);
-    // petit recul pendant le trajet : on voit la maison respirer
-    const pull = Math.sin(Math.PI * travel) * (i === 0 || i === 6 ? 0 : 0.35);
-    dir.multiplyScalar(1 + pull);
-    if (this.portrait) dir.multiplyScalar(eff < 0.5 || eff > 6.5 ? 1.7 : 1.25);
-    // balancement lent pendant la lecture
+    // caméra à hauteur d'yeux, le long du parcours
+    const pos = this.camCurve.getPoint(se / N);
+    const look = this.lookCurve.getPoint(se / N);
+    const outside = clamp(Math.max(1 - se, se - (N - 1)), 0, 1);
+    if (this.portrait && outside > 0) pos.sub(look).multiplyScalar(1 + 0.75 * outside).add(look);
     if (!this.reducedMotion) {
-      const orbit = 0.07 * Math.sin(Math.PI * Math.min(1, f / 0.5)) * (1 - travel) * (i === 0 ? 0 : 1);
-      dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), orbit);
       this.pointerSmooth.lerp(this.pointer, Math.min(1, dt * 3));
-      dir.x += this.pointerSmooth.x * 0.9;
-      dir.y += this.pointerSmooth.y * 0.5;
+      const d = pos.distanceTo(look);
+      const right = new THREE.Vector3().subVectors(look, pos).cross(UP).normalize();
+      look.addScaledVector(right, this.pointerSmooth.x * d * 0.09);
+      look.y += this.pointerSmooth.y * d * 0.05;
+      pos.y += Math.sin(t * 1.1) * 0.02 * (1 - outside);
     }
     if (this.intro > 0) {
       this.intro = Math.max(0, this.intro - dt * 0.45);
       const e = this.intro * this.intro;
-      dir.multiplyScalar(1 + e * 0.35);
-      dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), e * -0.25);
+      const dir = pos.clone().sub(look).multiplyScalar(1 + e * 0.35).applyAxisAngle(UP, e * -0.25);
+      pos.copy(look).add(dir);
     }
-    this.camera.position.copy(tgt).add(dir);
-    this.camera.lookAt(tgt);
+    this.camera.position.copy(pos);
+    this.camera.lookAt(look);
+    this.lookAt = look;
 
-    // décalage de cadrage (le texte occupe une partie de l'écran)
-    const shift = lerp(A.shift, B.shift, travel);
+    // champ de vision et cadrage (le texte occupe une partie de l'écran)
+    this.camera.fov = lerp(A.fov, B.fov, fe) + (this.portrait ? 14 : 0);
+    const shift = lerp(A.shift, B.shift, fe);
     if (this.portrait) {
-      this.camera.setViewOffset(this.width, this.height, 0, this.height * 0.2 * shift, this.width, this.height);
+      this.camera.setViewOffset(this.width, this.height, 0, this.height * (0.17 * shift + 0.14 * outside), this.width, this.height);
     } else {
-      const k = this.width > 1100 ? 0.19 : 0.15;
+      const k = this.width > 1100 ? 0.17 : 0.13;
       this.camera.setViewOffset(this.width, this.height, -this.width * k * shift, 0, this.width, this.height);
     }
 
-    // façade qui s'ouvre comme une maison de poupée
-    const open = smooth(0.08, 0.75, s);
+    // la porte s'ouvre quand on avance vers elle
+    const doorOpen = smooth(VUES.porte + 0.1, VUES.porte + 0.85, s);
+    this.door.rotation.y = -doorOpen * 1.6;
+    this.doorGlow.material.opacity = 0.55 * Math.sin(Math.PI * clamp(doorOpen, 0, 1)) + 0.25 * doorOpen * (1 - smooth(2.2, 2.8, s));
+
+    // à la fin, la façade s'ouvre pour montrer toute la maison
+    const open = smooth(N - 0.85, N - 0.15, s);
     this.facade.forEach(({ pivot, side }) => {
       pivot.rotation.y = side < 0 ? -open * 2.0 : open * 2.0;
     });
-    const fOp = clamp(1 - smooth(0.62, 0.95, s), 0, 1);
+    const fOp = clamp(1 - smooth(N - 0.55, N - 0.05, s), 0, 1);
     this.facadeMats.forEach((m) => {
       m.opacity = fOp * (m.userData?.base ?? 1);
     });
     this.facade.forEach(({ pivot }) => (pivot.visible = fOp > 0.01));
 
-    // chaleur générale : le fond se réchauffe au fil de la visite
-    const warmth = clamp(eff / 6, 0, 1);
+    // la maison se réchauffe au fil de la visite
+    const warmth = clamp(se / N, 0, 1);
     const u = this.backdrop.material.uniforms;
     u.top.value.copy(this.skyCold.top).lerp(this.skyWarm.top, warmth);
     u.bottom.value.copy(this.skyCold.bottom).lerp(this.skyWarm.bottom, warmth);
     u.warmth.value = warmth;
     this.warmth = warmth;
 
-    // lumière de la pièce active
-    const L0 = new THREE.Vector3().fromArray(ROOM_LIGHTS[i]);
-    const L1 = new THREE.Vector3().fromArray(ROOM_LIGHTS[i + 1]);
-    this.roomLight.position.copy(L0.lerp(L1, travel));
-    const fireNear = 1 - Math.min(1, Math.abs(eff - 2));
+    // lumière de la pièce où l'on se trouve
+    this.roomLight.position.copy(this.lightPts[i]).lerp(this.lightPts[i + 1], fe);
+    const fireNear = 1 - Math.min(1, Math.abs(se - VUES.salon));
     const flick = this.reducedMotion ? 0 : (Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.5) * 3 * fireNear;
-    this.roomLight.intensity = (eff > 6.5 ? 10 : 24) + flick;
+    this.roomLight.intensity = lerp(22, 12, outside) + flick;
 
-    // lumière qui suit le curseur
+    // petite lumière chaude qui suit le curseur
     if (!this.portrait && !this.reducedMotion) {
       const v = new THREE.Vector3(this.pointerSmooth.x, this.pointerSmooth.y, 0.5).unproject(this.camera);
       const d = v.sub(this.camera.position).normalize();
-      const dist = (tgt.z + 2.2 - this.camera.position.z) / d.z;
-      this.cursorLight.position.copy(this.camera.position).addScaledVector(d, dist);
-      this.cursorLight.intensity = eff > 0.6 && eff < 6.4 ? 6 : 0;
+      this.cursorLight.position.copy(this.camera.position).addScaledVector(d, 4.5);
+      this.cursorLight.intensity = outside < 0.5 ? 5 : 0;
     }
 
     // flammes et bougies
@@ -906,9 +937,24 @@ export class World {
     this.snowMat.uniforms.time.value = t;
     this.moteMat.uniforms.time.value = t;
 
+    // objets survolés ou touchés
+    for (const c of this.clickables) {
+      const target = c === this.hovered ? 1 : 0;
+      c.hover += (target - c.hover) * Math.min(1, dt * 10);
+      if (c.kind === 'product') {
+        c.obj.position.y = c.baseY + c.hover * 0.12 * c.baseScale + Math.sin(t * 2 + c.center.x) * 0.015 * c.baseScale;
+        c.obj.scale.setScalar(c.baseScale * (1 + c.hover * 0.07));
+      } else if (c.kind === 'toy' && (c.hover > 0.001 || c.bounce > 0)) {
+        c.bounce = Math.max(0, c.bounce - dt * 1.4);
+        const w = Math.sin((1 - c.bounce) * Math.PI * 5) * c.bounce;
+        const k = c.baseScale;
+        c.obj.scale.set(k * (1 - w * 0.06 + c.hover * 0.02), k * (1 + w * 0.1 + c.hover * 0.02), k * (1 - w * 0.06 + c.hover * 0.02));
+      }
+    }
+
     // chemin : les points s'allument au fur et à mesure de la visite
     const VU = this.viewU;
-    const pu = lerp(VU[i], VU[i + 1], travel);
+    const pu = lerp(VU[i], VU[i + 1], fe);
     const col = new THREE.Color();
     for (let k = 0; k < this.pathN; k++) {
       const uk = this.pathU[k];
@@ -923,7 +969,7 @@ export class World {
     }
     this.dots.instanceColor.needsUpdate = true;
     this.pathProgress = pu;
-    this.eff = eff;
+    this.eff = se;
   }
 
   // Position écran des points produits
@@ -933,16 +979,43 @@ export class World {
     for (const h of this.hotspots) {
       const near = Math.abs(this.eff - h.view);
       v.copy(h.anchor).project(this.camera);
-      const visible = near < 0.35 && v.z < 1;
-      out.push({
-        h,
-        x: (v.x * 0.5 + 0.5) * this.width,
-        y: (-v.y * 0.5 + 0.5) * this.height,
-        visible,
-        strength: 1 - near / 0.35,
-      });
+      const inFrame = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+      const visible = near < 0.5 && inFrame;
+      out.push({ h, x: (v.x * 0.5 + 0.5) * this.width, y: (-v.y * 0.5 + 0.5) * this.height, visible });
     }
     return out;
+  }
+
+  // Quel objet se trouve sous le doigt / la souris ? (coordonnées -1..1)
+  pick(nx, ny) {
+    this.ray.setFromCamera({ x: nx, y: ny }, this.camera);
+    const cam = this.camera.position;
+    const cands = this.clickables.filter((c) => c.obj.visible && c.center.distanceTo(cam) < 13);
+    if (this.s < VUES.porte + 0.6 && this.door) cands.push(this.doorEntry || (this.doorEntry = { kind: 'door', obj: this.door, center: new THREE.Vector3(0.8, 1.6, 3.8) }));
+    if (!cands.length) return null;
+    const hits = this.ray.intersectObjects(cands.map((c) => c.obj), true);
+    for (const hit of hits) {
+      let o = hit.object;
+      if (o.isSprite || o.isPoints) continue;
+      while (o && !o.userData.clickable && o !== this.door) o = o.parent;
+      if (o === this.door) return this.doorEntry;
+      if (o) return o.userData.clickable;
+    }
+    return null;
+  }
+
+  hover(nx, ny) {
+    this.hovered = nx === null ? null : this.pick(nx, ny);
+    return this.hovered;
+  }
+
+  poke(entry) {
+    if (entry && entry.kind === 'toy') entry.bounce = 1;
+  }
+
+  screenOf(v3) {
+    const v = v3.clone().project(this.camera);
+    return { x: (v.x * 0.5 + 0.5) * this.width, y: (-v.y * 0.5 + 0.5) * this.height, visible: v.z < 1 };
   }
 
   render() {

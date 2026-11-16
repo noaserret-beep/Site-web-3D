@@ -2,16 +2,22 @@
 
 Le site de **Maison Mellow** (chaussons bouillotte, bandeau bouillotte multifonction, bouillotte nuque…).
 
-Le principe : comme chez IKEA, le client **visite une maison en 3D, pièce par pièce**, en suivant un
-chemin de points lumineux. Chaque pièce met en scène un besoin (pieds froids, règles, digestion,
-nuque…) et les produits qui y répondent. La visite se termine sur la boutique complète.
+Le principe : comme chez IKEA, le client **entre dans une maison en 3D et la visite pièce par pièce**.
+Il clique pour arriver devant la porte, puis chaque coup de molette (ou chaque glissement du doigt
+sur téléphone) le fait avancer à hauteur d'yeux : la porte s'ouvre, on entre, on traverse le salon,
+la cuisine, on monte l'escalier… Chaque objet de la maison peut être touché : les produits s'ouvrent
+en 3D, les objets du décor réagissent et proposent le produit qui va avec.
 
 ## Ce que contient le site
 
-- **Accueil 3D** : la maison Maison Mellow sous la neige. En faisant défiler, la façade s'ouvre comme
-  une maison de poupée.
-- **6 pièces** : Entrée, Salon (chaussons), Cuisine (digestion), Chambre (règles),
-  Coin lecture (nuque et dos), Grenier à cadeaux (coffret).
+- **Accueil 3D** : la maison Maison Mellow sous la neige, et un bouton « Entrer dans la maison ».
+- **Devant la porte** : en faisant défiler, la porte s'ouvre et la chaleur de la maison s'échappe.
+- **La visite à hauteur d'yeux** : Entrée, Salon (chaussons), Cuisine (digestion), escalier,
+  Chambre (règles), Coin lecture (nuque et dos), échelle, Grenier à cadeaux (coffret).
+  À la fin, la façade s'ouvre et on découvre toute la maison d'un coup.
+- **Objets cliquables en 3D** : on clique directement sur un produit dans la pièce pour l'ouvrir
+  en 3D. Les objets du décor (cheminée, théière, lit, cadeaux…) sautillent et affichent une petite
+  bulle avec le produit associé.
 - **Points produits 3D** cliquables dans chaque pièce, avec le prix.
 - **Plan de la maison** (en bas à droite) avec un « Vous êtes ici » et un thermomètre qui monte
   au fil de la visite : le site se réchauffe à mesure qu'on avance.
@@ -76,6 +82,7 @@ js/data/catalogue.js    produits, prix, textes (à modifier)
 js/main.js              démarrage, défilement, plan, boutique
 js/ui/                  panier, fiche produit, utilitaires
 js/scene/world.js       la maison 3D et la visite
+js/scene/parcours.js    les étapes de la visite (où l'on se tient, ce que l'on regarde)
 js/scene/models.js      les modèles 3D (produits et mobilier)
 js/scene/studio.js      le "studio photo" 3D des fiches produit
 js/scene/textures.js    textures dessinées (parquet, papier peint…)

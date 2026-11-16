@@ -3,6 +3,7 @@ import { CONFIG, PRODUITS, PIECES, CATEGORIES, FAQ } from './data/catalogue.js';
 import { prix, produit, couleur, thumb, esc, ICONES, setStudio } from './ui/helpers.js';
 import { initCart, ajouter, refreshCart } from './ui/cart.js';
 import { initQuickView, ouvrirProduit } from './ui/quickview.js';
+import { VUES, DERNIERE } from './scene/parcours.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -13,10 +14,20 @@ const setLoad = (p) => (loaderBar.style.width = Math.round(p * 100) + '%');
 
 /* ----------------------------- Contenu ----------------------------- */
 function renderPieces() {
-  const html = PIECES.map((piece, i) => {
+  const ancres = [VUES.porte, ...PIECES.map((p) => VUES[p.id]), VUES.fin];
+  const etapes = (k) => Math.max(1, ancres[k + 1] - ancres[k]);
+  const porte = `<section class="porte" id="porte" data-view="${VUES.porte}" style="--steps:${etapes(0)}" aria-labelledby="titre-porte">
+      <div class="porte__card reveal">
+        <p class="eyebrow">Bienvenue chez Maison Mellow</p>
+        <h2 id="titre-porte">Poussez la porte…</h2>
+        <p>Faites défiler doucement (ou glissez vers le haut sur téléphone) : on entre, et chaque objet de la maison se touche pour le découvrir en 3D.</p>
+        <span class="porte__hint" aria-hidden="true"><span class="scroll-hint__mouse"><span></span></span>On entre</span>
+      </div>
+    </section>`;
+  const html = porte + PIECES.map((piece, i) => {
     const next = PIECES[i + 1];
     const produits = piece.produits.map(produit).filter(Boolean);
-    return `<section class="piece" id="piece-${piece.id}" data-view="${i + 1}" aria-labelledby="titre-${piece.id}">
+    return `<section class="piece" id="piece-${piece.id}" data-view="${VUES[piece.id]}" style="--steps:${etapes(i + 1)}" aria-labelledby="titre-${piece.id}">
       <div class="piece__panel reveal">
         <p class="piece__kicker"><span class="piece__num">${i + 1}</span>${esc(piece.nom)}<span class="piece__icon" aria-hidden="true">${ICONES[piece.icone] || ''}</span></p>
         <h2 id="titre-${piece.id}">${esc(piece.titre)}</h2>
@@ -172,53 +183,62 @@ let lastPlanKey = '';
 const seen = new Set();
 function updatePlan(s) {
   const { center, order } = planCtx;
-  const idx = Math.round(s) - 1; // 0..5 = pièces
-  const inRoom = idx >= 0 && idx < order.length;
-  const key = `${idx}`;
-  // position du point "vous êtes ici"
+  const vues = order.map((id) => VUES[id]);
+  // pièce la plus proche de l'endroit où l'on se trouve
+  let idx = -1;
+  vues.forEach((v, i) => {
+    if (Math.abs(s - v) < 0.6) idx = i;
+  });
+  const inRoom = idx >= 0;
+  // position du point "vous êtes ici" sur le plan
   let x = 80;
   let y = 128;
-  if (s >= 1) {
-    const a = Math.min(order.length - 1, Math.floor(s - 1));
-    const b = Math.min(order.length - 1, a + 1);
-    const t = Math.max(0, Math.min(1, (s - 1 - a) * 2 - 1));
+  if (s < vues[0]) {
+    const [ex, ey] = center(order[0]);
+    const t = Math.max(0, Math.min(1, s / vues[0]));
+    x = ex;
+    y = 128 + (ey - 128) * t;
+  } else {
+    let a = vues.length - 1;
+    for (let i = 0; i < vues.length - 1; i++) if (s < vues[i + 1]) { a = i; break; }
+    const b = Math.min(vues.length - 1, a + 1);
+    const t = b === a ? 0 : Math.max(0, Math.min(1, (s - vues[a]) / (vues[b] - vues[a])));
+    const k = t < 0.35 ? 0 : (t - 0.35) / 0.65;
     const [ax, ay] = center(order[a]);
     const [bx, by] = center(order[b]);
-    x = ax + (bx - ax) * t;
-    y = ay + (by - ay) * t;
-  } else {
-    const [ex, ey] = center(order[0]);
-    x = ex;
-    y = 128 + (ey - 128) * Math.max(0, s);
+    x = ax + (bx - ax) * k;
+    y = ay + (by - ay) * k;
   }
   for (const id of ['here', 'hereRing']) {
     const c = document.getElementById(id);
     c.setAttribute('cx', x.toFixed(1));
     c.setAttribute('cy', y.toFixed(1));
   }
-  const temp = 19 + Math.min(1, s / 6.5) * 18;
-  $('#planTemp').textContent = Math.round(temp) + '°';
-  $('#thermoFill').style.height = 8 + Math.min(1, s / 6.5) * 92 + '%';
+  const chaud = Math.min(1, s / (DERNIERE - 0.5));
+  $('#planTemp').textContent = Math.round(19 + chaud * 18) + '°';
+  $('#thermoFill').style.height = 8 + chaud * 92 + '%';
+  const passed = vues.filter((v) => s > v + 0.6).length;
+  const label = inRoom ? PIECES[idx].nom : s < vues[0] - 0.6 ? (s < 0.6 ? 'Dehors' : 'Devant la porte') : s > DERNIERE - 0.6 ? 'Toute la maison' : 'En chemin…';
+  const key = `${idx}|${passed}|${label}`;
   if (key === lastPlanKey) return;
   lastPlanKey = key;
   const done = [];
   order.forEach((id, i) => {
     const el = document.querySelector(`[data-room="${id}"]`);
     el.classList.toggle('is-current', i === idx);
-    el.classList.toggle('is-done', i < idx);
-    if (i <= idx) done.push(center(id).join(','));
+    el.classList.toggle('is-done', i < passed && i !== idx);
+    if (i <= Math.max(idx, passed - 1)) done.push(center(id).join(','));
   });
   document.getElementById('routeDone').setAttribute('points', done.join(' '));
   if (inRoom) {
     seen.add(order[idx]);
     document.querySelectorAll('#finRecap [data-piece]').forEach((a) => a.classList.toggle('is-seen', seen.has(a.dataset.piece)));
   }
-  const label = inRoom ? PIECES[idx].nom : s < 0.5 ? 'Dehors' : 'Toute la maison';
   $('#planHere').textContent = label;
   $('#progressLabel').textContent = inRoom ? `${idx + 1}/${order.length} · ${label}` : label;
   document.querySelectorAll('#progressDots i').forEach((d, i) => {
     d.classList.toggle('is-current', i === idx);
-    d.classList.toggle('is-done', i < idx);
+    d.classList.toggle('is-done', i < passed && i !== idx);
   });
 }
 
@@ -226,16 +246,19 @@ function updatePlan(s) {
 let anchors = [];
 function measure() {
   anchors = [...document.querySelectorAll('[data-view]')]
-    .sort((a, b) => a.dataset.view - b.dataset.view)
-    .map((el) => el.getBoundingClientRect().top + window.scrollY);
+    .map((el) => ({ y: el.getBoundingClientRect().top + window.scrollY, v: Number(el.dataset.view) }))
+    .sort((a, b) => a.v - b.v);
 }
+// position de défilement -> étape de la visite (0 = dehors, 13 = toute la maison)
 function scrollToS() {
   const y = window.scrollY;
-  if (y <= anchors[0]) return 0;
+  if (!anchors.length || y <= anchors[0].y) return 0;
   for (let i = 0; i < anchors.length - 1; i++) {
-    if (y < anchors[i + 1]) return i + (y - anchors[i]) / (anchors[i + 1] - anchors[i]);
+    const a = anchors[i];
+    const b = anchors[i + 1];
+    if (y < b.y) return a.v + ((y - a.y) / (b.y - a.y)) * (b.v - a.v);
   }
-  return anchors.length - 1;
+  return anchors[anchors.length - 1].v;
 }
 
 /* ------------------------------ Démarrage ------------------------------ */
@@ -247,6 +270,7 @@ async function boot() {
   $('#footerMail').href = `mailto:${CONFIG.email}`;
 
   renderPieces();
+  $('#fin-visite').dataset.view = VUES.fin;
   renderShop();
   renderFaq();
   planCtx = renderPlan();
@@ -361,6 +385,62 @@ async function boot() {
     });
   }
 
+  // On touche les objets de la maison directement en 3D
+  const canvas = $('#scene');
+  const ndc = (e) => [(e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1];
+  const bubbleEl = $('#bubble');
+  const bubble = { entry: null, timer: 0 };
+  function placeBubble() {
+    const p = world.screenOf(bubble.entry.top);
+    // la bulle reste toujours entièrement visible à l'écran
+    const w = bubbleEl.offsetWidth;
+    const h = bubbleEl.offsetHeight;
+    const x = Math.min(Math.max(p.x, 16 + w * 0.1), window.innerWidth - w * 0.9 - 16);
+    const y = Math.min(Math.max(p.y, 90 + h + 14), window.innerHeight - 16);
+    bubbleEl.style.transform = `translate(${x.toFixed(0)}px, ${y.toFixed(0)}px)`;
+    bubbleEl.classList.toggle('is-off', !p.visible);
+  }
+  function showBubble(entry) {
+    bubble.entry = entry;
+    const p = entry.productId ? produit(entry.productId) : null;
+    bubbleEl.innerHTML = `<p>${esc(entry.ligne)}</p>${p ? `<button type="button" data-qv="${p.id}">${ICONES.rotation}Voir ${esc(p.court)} en 3D</button>` : ''}`;
+    bubbleEl.hidden = false;
+    placeBubble();
+    clearTimeout(bubble.timer);
+    bubble.timer = setTimeout(hideBubble, 6000);
+  }
+  function hideBubble() {
+    bubble.entry = null;
+    bubbleEl.hidden = true;
+  }
+  bubbleEl.addEventListener('click', hideBubble);
+  if (world) {
+    let lastMove = 0;
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      const now = performance.now();
+      if (now - lastMove < 40) return;
+      lastMove = now;
+      const hit = world.hover(...ndc(e));
+      canvas.style.cursor = hit ? 'pointer' : '';
+    });
+    canvas.addEventListener('pointerleave', () => world.hover(null));
+    canvas.addEventListener('click', (e) => {
+      const hit = world.pick(...ndc(e));
+      if (!hit) return hideBubble();
+      if (hit.kind === 'product') {
+        hideBubble();
+        ouvrirProduit(hit.productId);
+      } else if (hit.kind === 'door') {
+        const target = current < VUES.porte - 0.3 ? '#porte' : '#piece-entree';
+        $(target).scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
+      } else {
+        world.poke(hit);
+        showBubble(hit);
+      }
+    });
+  }
+
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
@@ -371,8 +451,9 @@ async function boot() {
     const sheetTop = sheet.getBoundingClientRect().top;
     const covered = sheetTop <= 0;
     header.classList.toggle('is-solid', window.scrollY > 40);
-    plan.classList.toggle('is-hidden', current < 0.55 || sheetTop < window.innerHeight * 0.6);
-    prog.classList.toggle('is-hidden', current < 0.55 || sheetTop < window.innerHeight * 0.6);
+    plan.classList.toggle('is-hidden', current < 0.85 || sheetTop < window.innerHeight * 0.6);
+    prog.classList.toggle('is-hidden', current < 0.85 || sheetTop < window.innerHeight * 0.6);
+    if (bubble.entry) placeBubble();
     updatePlan(current);
 
     if (world && !world.paused && !covered && !document.hidden) {

@@ -159,9 +159,9 @@ export const PIECES = [
     icone: 'maison',
     titre: 'Entrez, installez-vous.',
     texte:
-      "Bienvenue chez Maison Mellow. Ici, tout est pensé pour la chaleur douce : celle qui détend les pieds, apaise le ventre et dénoue la nuque. Suivez le chemin, on vous fait visiter.",
-    produits: [],
-    astuce: null,
+      "Bienvenue chez Maison Mellow. On pose son manteau, on enfile des chaussons tout chauds… Ici, tout est pensé pour la chaleur douce : celle qui détend les pieds, apaise le ventre et dénoue la nuque.",
+    produits: ['chaussons-nuage'],
+    astuce: 'Astuce : tous les objets de la maison se touchent ! Cliquez dessus pour les découvrir en 3D.',
   },
   {
     id: 'salon',
