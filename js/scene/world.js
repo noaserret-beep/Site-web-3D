@@ -1,16 +1,17 @@
 // La Maison Mellow en 3D : une maison de poupée que l'on visite pièce par pièce
-import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import * as THREE from '../../vendor/three/three.module.min.js';
+import { RoomEnvironment } from '../../vendor/three/addons/environments/RoomEnvironment.js';
+import { HDRLoader } from '../../vendor/three/addons/loaders/HDRLoader.js';
+import { EffectComposer } from '../../vendor/three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from '../../vendor/three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from '../../vendor/three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from '../../vendor/three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../../vendor/three/addons/postprocessing/OutputPass.js';
 import * as M from './models.js';
 import * as T from './textures.js';
 import { pbr, modele, manager } from './realisme.js';
 import { ETAPES, VUES, DERNIERE } from './parcours.js';
+import { url } from '../base.js';
 
 const { box, mats } = M;
 
@@ -74,7 +75,7 @@ export class World {
     const pmrem = new THREE.PMREMGenerator(r);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.35;
-    new HDRLoader(manager).load('assets/textures/fireplace_1k.hdr', (hdr) => {
+    new HDRLoader(manager).load(url('assets/textures/fireplace_1k.hdr'), (hdr) => {
       hdr.mapping = THREE.EquirectangularReflectionMapping;
       this.scene.environment = pmrem.fromEquirectangular(hdr).texture;
       this.scene.environmentIntensity = 0.55;
@@ -446,7 +447,7 @@ export class World {
         // enseigne Maison Mellow
         const sign = new THREE.Group();
         sign.add(box(1.9, 1.05, 0.1, 0.08, trimM));
-        const logoTex = new THREE.TextureLoader().load('assets/monogramme-creme.png');
+        const logoTex = new THREE.TextureLoader().load(url('assets/monogramme-creme.png'));
         logoTex.colorSpace = THREE.SRGBColorSpace;
         const lm = new THREE.MeshBasicMaterial({ map: logoTex, transparent: true });
         this.facadeMats.push(lm);

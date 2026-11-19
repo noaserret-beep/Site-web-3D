@@ -1,6 +1,6 @@
 // "Studio photo" 3D : génère les vignettes produits et anime la vue 3D du produit
-import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as THREE from '../../vendor/three/three.module.min.js';
+import { RoomEnvironment } from '../../vendor/three/addons/environments/RoomEnvironment.js';
 import { makeProduct } from './models.js';
 import { shadowTexture } from './textures.js';
 

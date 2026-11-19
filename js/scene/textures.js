@@ -1,5 +1,5 @@
 // Textures dessinées à la volée (aucune image à télécharger)
-import * as THREE from 'three';
+import * as THREE from '../../vendor/three/three.module.min.js';
 
 const cache = new Map();
 

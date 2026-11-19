@@ -1,6 +1,7 @@
 // Panier : stocké dans le navigateur du client (localStorage)
 import { CONFIG, PRODUITS } from '../data/catalogue.js';
 import { prix, produit, couleur, thumb, esc, toast, flyToCart, makeDialog } from './helpers.js';
+import * as woo from './woocommerce.js';
 
 const KEY = 'maison-mellow-panier';
 let items = load();
@@ -30,6 +31,10 @@ const port = () => (sousTotal() >= CONFIG.livraisonOfferteDes || !items.length ?
 
 export function ajouter(id, { coloris, taille, qty = 1, from } = {}) {
   const p = produit(id);
+  if (p.disponible === false) {
+    toast('Ce produit est momentanément indisponible.');
+    return;
+  }
   coloris = coloris || p.coloris[0];
   taille = taille || (p.tailles.length ? p.tailles[1] || p.tailles[0] : '');
   const key = `${id}|${coloris}|${taille}`;
@@ -126,8 +131,27 @@ function render() {
     : '';
 }
 
-function commander() {
+async function commander() {
   if (!items.length) return;
+  // Dans WordPress : on remplit le panier WooCommerce et on part au paiement
+  if (woo.actif()) {
+    const btn = document.getElementById('checkoutBtn');
+    btn.disabled = true;
+    btn.textContent = 'Préparation de votre commande…';
+    try {
+      const { erreurs, paiement } = await woo.commander(items);
+      if (erreurs.length) toast(`Certains produits n'ont pas pu être ajoutés : ${erreurs.join(', ')}.`);
+      items = [];
+      save();
+      window.location.href = paiement;
+    } catch (e) {
+      console.warn(e);
+      toast('Le paiement est indisponible pour le moment. Réessayez dans un instant.');
+      btn.disabled = false;
+      btn.textContent = 'Commander';
+    }
+    return;
+  }
   if (CONFIG.lienPaiement) {
     window.location.href = CONFIG.lienPaiement;
     return;

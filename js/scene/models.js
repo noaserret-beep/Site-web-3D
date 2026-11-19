@@ -1,6 +1,6 @@
 // Modèles 3D procéduraux : produits Maison Mellow + mobilier des pièces
-import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as THREE from '../../vendor/three/three.module.min.js';
+import { RoundedBoxGeometry } from '../../vendor/three/addons/geometries/RoundedBoxGeometry.js';
 import * as T from './textures.js';
 import { pbr, tissu, tex } from './realisme.js';
 

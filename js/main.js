@@ -4,6 +4,8 @@ import { prix, produit, couleur, thumb, esc, ICONES, setStudio } from './ui/help
 import { initCart, ajouter, refreshCart } from './ui/cart.js';
 import { initQuickView, ouvrirProduit } from './ui/quickview.js';
 import { VUES, DERNIERE } from './scene/parcours.js';
+import { WP } from './base.js';
+import { synchroniser } from './ui/woocommerce.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -263,6 +265,10 @@ function scrollToS() {
 
 /* ------------------------------ Démarrage ------------------------------ */
 async function boot() {
+  // Dans WordPress : réglages de l'extension et prix à jour depuis WooCommerce
+  Object.assign(CONFIG, WP.config || {});
+  await synchroniser();
+
   $('#year').textContent = new Date().getFullYear();
   const seuil = prix(CONFIG.livraisonOfferteDes).replace(',00', '');
   $('#heroShipping').textContent = `Livraison offerte dès ${seuil}`;

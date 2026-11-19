@@ -1,5 +1,6 @@
 // Petits utilitaires partagés par l'interface
 import { PRODUITS, COLORIS } from '../data/catalogue.js';
+import { url } from '../base.js';
 
 const fmt = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 export const prix = (n) => fmt.format(n);
@@ -16,7 +17,7 @@ export function setStudio(s) {
   studio = s;
 }
 export function thumb(p, colorKey) {
-  if (p.image) return p.image;
+  if (p.image) return url(p.image);
   const c = couleur(colorKey || p.coloris[0]).hex;
   if (studio) {
     try {
@@ -25,7 +26,7 @@ export function thumb(p, colorKey) {
       console.warn(e);
     }
   }
-  return 'assets/monogramme.png';
+  return url('assets/monogramme.png');
 }
 
 /* ------------------------------ Icônes ------------------------------ */

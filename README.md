@@ -77,6 +77,18 @@ Le site est 100 % statique : il peut être hébergé gratuitement.
   branche et le dossier `/ (root)`.
 - **Netlify** ou **Vercel** : glisser-déposer le dossier, ou connecter le dépôt.
 
+## Intégrer le site à WordPress (avec WooCommerce)
+
+Le dossier [`wordpress/`](wordpress/) contient l'extension **Maison Mellow 3D** :
+
+- elle affiche la visite 3D en plein écran sur la page de votre choix (ou en page d'accueil) ;
+- elle relie les produits de la maison à vos produits **WooCommerce** : prix, promotions, stock
+  et photos à jour, et le bouton « Commander » ouvre la page de paiement WooCommerce.
+
+Pour fabriquer le fichier à installer : `./wordpress/construire.sh` crée
+`dist/maison-mellow-3d.zip`. Le mode d'emploi détaillé est dans
+[`wordpress/maison-mellow-3d/LISEZ-MOI.md`](wordpress/maison-mellow-3d/LISEZ-MOI.md).
+
 ## Structure
 
 ```
@@ -94,6 +106,8 @@ assets/                 logo, favicon
 assets/models/          meubles et objets 3D (format .glb compressé)
 assets/textures/        textures réalistes (bois, plâtre, tissus…) et éclairage d'intérieur
 js/scene/realisme.js    chargement des meubles et des matières réalistes
+js/ui/woocommerce.js    lien avec WooCommerce (dans WordPress)
+wordpress/              extension WordPress Maison Mellow 3D
 vendor/three/           moteur 3D three.js (licence MIT)
 ```
 

@@ -2,6 +2,7 @@
 import { PRODUITS } from '../data/catalogue.js';
 import { prix, produit, couleur, thumb, esc, ICONES, makeDialog } from './helpers.js';
 import { ajouter } from './cart.js';
+import { url } from '../base.js';
 
 let dialog;
 let studio = null;
@@ -36,7 +37,7 @@ export function ouvrirProduit(id) {
   const stage = document.getElementById('qvStage');
   const photo = document.getElementById('qvPhoto');
   if (p.image) {
-    photo.src = p.image;
+    photo.src = url(p.image);
     photo.alt = p.nom;
     photo.hidden = false;
     document.getElementById('qvHint').hidden = true;

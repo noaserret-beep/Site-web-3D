@@ -1,10 +1,11 @@
 // Matières et objets réalistes (textures Poly Haven, licence CC0)
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import * as THREE from '../../vendor/three/three.module.min.js';
+import { GLTFLoader } from '../../vendor/three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from '../../vendor/three/addons/libs/meshopt_decoder.module.js';
+import { url } from '../base.js';
 
-const TEX = 'assets/textures/';
-const MOD = 'assets/models/';
+const TEX = url('assets/textures/');
+const MOD = url('assets/models/');
 
 export const manager = new THREE.LoadingManager();
 const texLoader = new THREE.TextureLoader(manager);
